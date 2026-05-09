@@ -641,14 +641,21 @@ function renderFinanceiro() {
   const vendas   = dados.vendas.filter(v=>v.mes===mes);
   const filtro   = document.getElementById("desp-filtro")?.value || "mes";
   let despesas;
-  if(filtro==="mes") despesas = dados.despesas.filter(d=>d.mes===mes);
+  if(filtro==="mes") despesas = dados.despesas.filter(d=>{
+    const dm = d.mes || (d.data ? d.data.substring(0,7) : '');
+    return dm === mes;
+  });
   else if(filtro==="30") { const d30=new Date(); d30.setDate(d30.getDate()-30); despesas=dados.despesas.filter(d=>new Date(d.data)>=d30); }
   else despesas = dados.despesas;
 
-  const receita    = vendas.reduce((s,v)=>s+v.total,0);
-  const despTot    = despesas.reduce((s,d)=>s+d.valor,0);
+  const receita    = vendas.reduce((s,v)=>s+(v.total||0),0);
+  const despTot    = despesas.reduce((s,d)=>s+(d.valor||0),0);
   let custoProd    = 0;
-  for(const v of vendas) { const p=dados.estoque.find(x=>x.id===v.produto_id); if(p) custoProd+=p.custo*v.qtd; }
+  for(const v of vendas) { 
+    const p=dados.estoque.find(x=>x.id===v.produto_id); 
+    const custo = p ? (p.custo||0) : (v.custo_unitario||0);
+    custoProd += custo * (v.qtd||1); 
+  }
   const lucro      = receita - despTot - custoProd;
   const margem     = receita>0?(lucro/receita*100):0;
 
@@ -698,8 +705,8 @@ function renderFinanceiro() {
   document.getElementById("desp-tbody").innerHTML = despesas.length
     ? despesas.map(d=>`<tr>
         <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
-        <td>${d.desc}</td>
-        <td><span class="badge badge-warn">${d.categoria}</span></td>
+        <td>${d.desc||d.descricao||'-'}</td>
+        <td><span class="badge badge-warn">${d.categoria||'Outros'}</span></td>
         <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(d.valor)}</td>
         <td style="text-align:center"><button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button></td>
       </tr>`).join("")
