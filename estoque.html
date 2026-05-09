@@ -205,29 +205,16 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <div class="page" id="page-telegram">
   <div style="max-width:700px;margin:0 auto">
     <div style="background:var(--accent-light);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-bottom:1.5rem;box-shadow:var(--shadow)">
-      <div style="font-weight:600;font-size:14px;color:var(--accent);margin-bottom:4px">🤖 Bot Telegram Configurado</div>
-      <div style="font-size:12px;color:var(--text2)">Bot: <strong>@estoquemsq_bot</strong> — rodando 24h no Railway</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px">Os dados são sincronizados automaticamente com o JSONBin a cada 30 segundos.</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div id="bot-status-dot" style="width:12px;height:12px;border-radius:50%;background:var(--border);flex-shrink:0;transition:background .3s"></div>
+        <div style="font-weight:600;font-size:14px;color:var(--accent)" id="bot-status-txt">Verificando bot...</div>
+      </div>
+      <div style="font-size:12px;color:var(--text2)">Bot: <strong>@estoquemsq_bot</strong> — Railway 24h</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Dados sincronizados com JSONBin a cada 30 segundos.</div>
     </div>
     <div class="twrap">
       <div style="background:var(--surface2);padding:12px 16px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Comandos do Bot</div>
-      <div style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${[
-          ['/estoque','Ver todos os produtos e quantidades'],
-          ['/produtos','Listar produtos com preços'],
-          ['/entrada [produto] [qtd]','Registrar entrada de estoque'],
-          ['/venda [produto] [qtd]','Registrar venda'],
-          ['/custo [produto] [valor]','Atualizar preço de custo'],
-          ['/preco [produto] [valor]','Atualizar preço de venda'],
-          ['/despesa [valor] [desc]','Registrar despesa'],
-          ['/despesas','Ver despesas do mês'],
-          ['/resumo','Resumo financeiro'],
-          ['/alerta','Produtos com estoque baixo'],
-        ].map(([cmd,desc])=>`<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">${cmd}</div>
-          <div style="font-size:12px;color:var(--text2)">${desc}</div>
-        </div>`).join('')}
-      </div>
+      <div style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:10px" id="tg-cmds"></div>
     </div>
   </div>
 </div>
@@ -634,10 +621,53 @@ setInterval(updateClock, 1000); updateClock();
 document.getElementById("edit-custo").addEventListener("input", calcEditMargem);
 document.getElementById("edit-preco").addEventListener("input", calcEditMargem);
 
+const CMDS = [
+  ['/estoque','Ver todos os produtos e quantidades'],
+  ['/produtos','Listar produtos com preços'],
+  ['/entrada [produto] [qtd]','Registrar entrada de estoque'],
+  ['/venda [produto] [qtd]','Registrar venda'],
+  ['/custo [produto] [valor]','Atualizar preco de custo'],
+  ['/preco [produto] [valor]','Atualizar preco de venda'],
+  ['/despesa [valor] [desc]','Registrar despesa'],
+  ['/despesas','Ver despesas do mes'],
+  ['/resumo','Resumo financeiro'],
+  ['/alerta','Produtos com estoque baixo'],
+];
+
+function renderTelegram() {
+  const el = document.getElementById('tg-cmds');
+  if(el) el.innerHTML = CMDS.map(([cmd,desc])=>`
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">${cmd}</div>
+      <div style="font-size:12px;color:var(--text2)">${desc}</div>
+    </div>`).join('');
+}
+
+async function checkBot() {
+  const TOKEN = '8723853827:AAFeOqlYT6goT6bbajCWpFmVLNnN2ZjR_H0';
+  const dot = document.getElementById('bot-status-dot');
+  const txt = document.getElementById('bot-status-txt');
+  try {
+    const r = await fetch('https://api.telegram.org/bot'+TOKEN+'/getMe');
+    const d = await r.json();
+    if(d.ok && dot && txt) {
+      dot.style.background='#2d7d4f';
+      txt.textContent = 'Bot online — @' + d.result.username + ' (Railway 24h)';
+      dot.style.animation='pulse 2s infinite';
+    }
+  } catch(e) {
+    if(dot) dot.style.background='var(--danger)';
+    if(txt) txt.textContent = 'Bot offline';
+  }
+}
+
 async function init() {
   await lerDados();
   renderAll();
+  renderTelegram();
+  checkBot();
   setInterval(async()=>{ await lerDados(); renderAll(); }, 30000);
+  setInterval(checkBot, 30000);
 }
 init();
 </script>
