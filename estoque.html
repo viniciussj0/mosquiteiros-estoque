@@ -448,28 +448,27 @@ function openEdit(id) {
   document.getElementById("edit-custo").value = p.custo;
   document.getElementById("edit-preco").value = p.preco;
   calcEditMargem();
-  renderVarList(p.cores || []);
+  coresTemp = JSON.parse(JSON.stringify(p.cores || []));
+  renderVarList(coresTemp);
   openModal("ov-edit");
 }
 
+// Array temporario de cores durante edicao
+let coresTemp = [];
+
 function renderVarList(cores) {
+  coresTemp = cores;
   const el = document.getElementById("var-list");
-  if(!cores.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma variação cadastrada</div>'; return; }
+  if(!cores.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma variacao cadastrada</div>'; return; }
   el.innerHTML = cores.map((c,i) => `
     <div class="var-item">
       <div class="var-dot" style="background:${c.hex}"></div>
       <span class="var-nome">${c.nome}</span>
       <button class="qty-btn" onclick="alterarCorQty(${i},-1)">−</button>
-      <span class="var-qty">${c.qty||0}</span>
+      <span class="var-qty" id="cor-qty-${i}">${c.qty||0}</span>
       <button class="qty-btn" onclick="alterarCorQty(${i},1)">+</button>
       <button class="btn btn-danger btn-xs" onclick="removerCor(${i})">×</button>
     </div>`).join("");
-}
-
-function getCoresEdit() {
-  const id = document.getElementById("edit-id").value;
-  const p  = dados.estoque.find(x=>x.id===id);
-  return p ? (p.cores || []) : [];
 }
 
 function adicionarCor() {
@@ -477,32 +476,23 @@ function adicionarCor() {
   const nome = document.getElementById("nova-cor-nome").value.trim();
   const qty  = parseInt(document.getElementById("nova-cor-qty").value)||0;
   if(!nome) { toast("Informe o nome da cor!", true); return; }
-  const id = document.getElementById("edit-id").value;
-  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
-  if(!p.cores) p.cores = [];
-  p.cores.push({hex, nome, qty});
-  // Atualiza qty total do produto
-  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
-  renderVarList(p.cores);
+  coresTemp.push({hex, nome, qty});
+  renderVarList(coresTemp);
   document.getElementById("nova-cor-nome").value = "";
   document.getElementById("nova-cor-qty").value = "0";
 }
 
 function alterarCorQty(idx, delta) {
-  const id = document.getElementById("edit-id").value;
-  const p  = dados.estoque.find(x=>x.id===id); if(!p||!p.cores) return;
-  if((p.cores[idx].qty||0)+delta < 0) return;
-  p.cores[idx].qty = (p.cores[idx].qty||0) + delta;
-  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
-  renderVarList(p.cores);
+  if(idx < 0 || idx >= coresTemp.length) return;
+  if((coresTemp[idx].qty||0)+delta < 0) return;
+  coresTemp[idx].qty = (coresTemp[idx].qty||0) + delta;
+  const el = document.getElementById("cor-qty-" + idx);
+  if(el) el.textContent = coresTemp[idx].qty;
 }
 
 function removerCor(idx) {
-  const id = document.getElementById("edit-id").value;
-  const p  = dados.estoque.find(x=>x.id===id); if(!p||!p.cores) return;
-  p.cores.splice(idx,1);
-  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
-  renderVarList(p.cores);
+  coresTemp.splice(idx, 1);
+  renderVarList(coresTemp);
 }
 function calcEditMargem() {
   const c = parseFloat(document.getElementById("edit-custo").value)||0;
@@ -518,6 +508,7 @@ function salvarEdicao() {
   p.custo = parseFloat(document.getElementById("edit-custo").value)||0;
   p.preco = parseFloat(document.getElementById("edit-preco").value)||0;
   // Se tem cores, qty = soma das cores
+  p.cores = coresTemp;
   if(p.cores && p.cores.length > 0) {
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   }
