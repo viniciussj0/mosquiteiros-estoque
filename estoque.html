@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -341,6 +340,7 @@ async function lerDados() {
 }
 
 async function salvarDados() {
+  dados.estoque.forEach(p => { p.estoque = p.qty; });
   if(saving) return; saving = true;
   setSyncLabel("Salvando...");
   try {
@@ -351,6 +351,12 @@ async function salvarDados() {
 }
 
 function garantirProdutos() {
+  // Compatibilidade: bot usa "estoque", site usa "qty"
+  dados.estoque.forEach(p => {
+    if(p.qty === undefined && p.estoque !== undefined) p.qty = p.estoque;
+    if(p.estoque === undefined && p.qty !== undefined) p.estoque = p.qty;
+    if(p.cod === undefined) p.cod = p.id;
+  });
   const ids = dados.estoque.map(p=>p.id);
   for(const p of PRODUTOS_PADRAO) if(!ids.includes(p.id)) dados.estoque.push({...p});
 }
