@@ -66,22 +66,19 @@ def formatar_real(valor):
 # ─── COMANDOS ────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    texto = (
-        "🦟 *Bot Mosquiteiros — Online!*\n\n"
-        "Comandos disponíveis:\n"
-        "/estoque — Ver estoque atual\n"
-        "/produtos — Listar produtos\n"
-        "/entrada [produto] [qtd] — Registrar entrada\n"
-        "/venda [produto] [qtd] — Registrar venda\n"
-        "/custo [produto] [valor] — Atualizar custo\n"
-        "/preco [produto] [valor] — Atualizar preço\n"
-        "/despesa [valor] [descrição] — Adicionar despesa\n"
-        "/despesas — Ver despesas do mês\n"
-        "/resumo — Resumo financeiro\n"
-        "/alerta — Produtos com estoque baixo\n"
-        "/apagar [número] — Apagar despesa\n"
-        "/limpar — Apagar todas as despesas do mês"
-    )
+    texto = ("*FinStack Bot Online!*\n\nComandos disponiveis:\n"
+        "/estoque - Ver estoque atual\n"
+        "/produtos - Listar produtos\n"
+        "/entrada [produto] [qtd] - Registrar entrada\n"
+        "/venda [produto] [qtd] - Registrar venda\n"
+        "/custo [produto] [valor] - Atualizar custo\n"
+        "/preco [produto] [valor] - Atualizar preco\n"
+        "/despesa [valor] [desc] - Adicionar despesa\n"
+        "/despesas - Ver despesas do mes\n"
+        "/resumo - Resumo financeiro\n"
+        "/alerta - Produtos com estoque baixo\n"
+        "/apagar [numero] - Apagar despesa\n"
+        "/limpar - Apagar todas as despesas do mes")
     await update.message.reply_text(texto, parse_mode="Markdown")
 
 async def cmd_estoque(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
