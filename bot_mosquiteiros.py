@@ -329,21 +329,15 @@ async def cmd_limpar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 async def notificar_inicio(app):
     try:
-        await app.bot.send_message(
-            chat_id=CHAT_ID,
-            text="🟢 *FinStack Bot Online!*
-
-Bot iniciado com sucesso e pronto para receber comandos.
-
-Mande /start para ver os comandos disponíveis.",
-            parse_mode="Markdown"
-        )
+        msg = "*FinStack Bot Online!*\n\nBot iniciado com sucesso no Railway.\nMande /start para ver os comandos."
+        await app.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
+        print("Mensagem de inicio enviada!")
     except Exception as e:
-        print(f"Erro ao notificar início: {e}")
+        print("Erro ao notificar inicio:", e)
 
 def main():
-    print("🦟 Bot Mosquiteiros iniciando...")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    print("FinStack Bot iniciando...")
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(notificar_inicio).build()
     app.add_handler(CommandHandler("start",    cmd_start))
     app.add_handler(CommandHandler("estoque",  cmd_estoque))
     app.add_handler(CommandHandler("produtos", cmd_produtos))
@@ -357,9 +351,11 @@ def main():
     app.add_handler(CommandHandler("alerta",   cmd_alerta))
     app.add_handler(CommandHandler("apagar",   cmd_apagar))
     app.add_handler(CommandHandler("limpar",   cmd_limpar))
-    app.post_init = notificar_inicio
-    print("✅ Bot rodando! Aguardando comandos...")
+    print("Bot rodando! Aguardando comandos...")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
