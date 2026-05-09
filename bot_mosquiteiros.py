@@ -1,15 +1,15 @@
 import os
 import requests
+import time
 from datetime import datetime
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8723853827:AAFeOqlYT6goT6bbajCWpFmVLNnN2ZjR_H0")
 CHAT_ID        = "5303204887"
 JSONBIN_KEY    = os.environ.get("JSONBIN_KEY", "$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq")
 JSONBIN_BIN    = os.environ.get("JSONBIN_BIN", "69fbf4d9adc21f119a64af4c")
 JSONBIN_URL    = "https://api.jsonbin.io/v3/b/" + JSONBIN_BIN
-HEADERS        = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
+JB_HEADERS     = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
+TG_URL         = "https://api.telegram.org/bot" + TELEGRAM_TOKEN
 
 PRODUTOS_PADRAO = [
     {"id": "MGA-001", "nome": "Mosquiteiro Gigante Aberto",  "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
@@ -20,9 +20,28 @@ PRODUTOS_PADRAO = [
     {"id": "MGF-001", "nome": "Mosquiteiro Gigante Fechado",  "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
 ]
 
+def send(chat_id, text):
+    try:
+        requests.post(TG_URL + "/sendMessage", json={
+            "chat_id": chat_id, "text": text, "parse_mode": "Markdown"
+        }, timeout=10)
+    except Exception as e:
+        print("Erro ao enviar mensagem:", e)
+
+def get_updates(offset=None):
+    try:
+        params = {"timeout": 30}
+        if offset:
+            params["offset"] = offset
+        r = requests.get(TG_URL + "/getUpdates", params=params, timeout=35)
+        return r.json().get("result", [])
+    except Exception as e:
+        print("Erro ao buscar updates:", e)
+        return []
+
 def ler_dados():
     try:
-        r = requests.get(JSONBIN_URL, headers=HEADERS, timeout=10)
+        r = requests.get(JSONBIN_URL, headers=JB_HEADERS, timeout=10)
         record = r.json().get("record", {})
         record.setdefault("despesas", [])
         record.setdefault("estoque", [])
@@ -38,7 +57,7 @@ def salvar_dados(dados):
         for p in dados.get("estoque", []):
             p["estoque"] = p.get("qty", p.get("estoque", 0))
             p["qty"] = p["estoque"]
-        requests.put(JSONBIN_URL, json=dados, headers=HEADERS, timeout=10)
+        requests.put(JSONBIN_URL, json=dados, headers=JB_HEADERS, timeout=10)
     except Exception as e:
         print("Erro ao salvar JSONBin:", e)
 
@@ -67,269 +86,262 @@ def mes_atual():
 def real(valor):
     return "R$ {:,.2f}".format(valor).replace(",", "X").replace(".", ",").replace("X", ".")
 
-async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    texto = ("*FinStack Bot Online!*\n\nComandos disponiveis:\n"
-        "/estoque - Ver estoque atual\n"
-        "/produtos - Listar produtos\n"
-        "/entrada [produto] [qtd] - Registrar entrada\n"
-        "/venda [produto] [qtd] - Registrar venda\n"
-        "/custo [produto] [valor] - Atualizar custo\n"
-        "/preco [produto] [valor] - Atualizar preco\n"
-        "/despesa [valor] [desc] - Adicionar despesa\n"
-        "/despesas - Ver despesas do mes\n"
-        "/resumo - Resumo financeiro\n"
-        "/alerta - Produtos com estoque baixo\n"
-        "/apagar [numero] - Apagar despesa\n"
-        "/limpar - Apagar todas as despesas do mes")
-    await update.message.reply_text(texto, parse_mode="Markdown")
+def handle(chat_id, text):
+    parts = text.strip().split()
+    cmd   = parts[0].lower().split("@")[0]
+    args  = parts[1:]
 
-async def cmd_estoque(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = garantir_produtos(ler_dados())
-    linhas = ["*Estoque Atual*\n"]
-    for p in dados["estoque"]:
-        qty = p.get("qty", p.get("estoque", 0))
-        emoji = "🔴" if qty == 0 else "🟡" if qty < 5 else "🟢"
-        linhas.append("{} *{}* - {} un".format(emoji, p["nome"], qty))
-    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
+    if cmd == "/start":
+        send(chat_id,
+            "*FinStack Bot Online!*\n\nComandos disponiveis:\n"
+            "/estoque - Ver estoque atual\n"
+            "/produtos - Listar produtos\n"
+            "/entrada [produto] [qtd] - Registrar entrada\n"
+            "/venda [produto] [qtd] - Registrar venda\n"
+            "/custo [produto] [valor] - Atualizar custo\n"
+            "/preco [produto] [valor] - Atualizar preco\n"
+            "/despesa [valor] [desc] - Adicionar despesa\n"
+            "/despesas - Ver despesas do mes\n"
+            "/resumo - Resumo financeiro\n"
+            "/alerta - Produtos com estoque baixo\n"
+            "/apagar [numero] - Apagar despesa\n"
+            "/limpar - Apagar todas as despesas do mes"
+        )
 
-async def cmd_produtos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = garantir_produtos(ler_dados())
-    linhas = ["*Produtos Cadastrados*\n"]
-    for i, p in enumerate(dados["estoque"], 1):
-        qty = p.get("qty", p.get("estoque", 0))
-        margem = ""
-        if p.get("custo", 0) > 0 and p.get("preco", 0) > 0:
-            m = ((p["preco"] - p["custo"]) / p["preco"]) * 100
-            margem = " | Margem: {:.0f}%".format(m)
-        linhas.append("{}. *{}* ({})\n   Custo: {} | Venda: {}{}\n   Estoque: {} un".format(
-            i, p["nome"], p["id"], real(p.get("custo", 0)), real(p.get("preco", 0)), margem, qty))
-    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
+    elif cmd == "/estoque":
+        dados = garantir_produtos(ler_dados())
+        linhas = ["*Estoque Atual*\n"]
+        for p in dados["estoque"]:
+            qty = p.get("qty", p.get("estoque", 0))
+            emoji = "🔴" if qty == 0 else "🟡" if qty < 5 else "🟢"
+            linhas.append("{} *{}* - {} un".format(emoji, p["nome"], qty))
+        send(chat_id, "\n".join(linhas))
 
-async def cmd_entrada(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if len(args) < 2:
-        await update.message.reply_text("Uso: /entrada [produto] [qtd]\nEx: /entrada casal 10")
-        return
-    try:
-        qtd = int(args[-1])
-        termo = " ".join(args[:-1])
-    except ValueError:
-        await update.message.reply_text("A quantidade deve ser um numero inteiro.")
-        return
-    dados = garantir_produtos(ler_dados())
-    produto = buscar_produto(dados, termo)
-    if not produto:
-        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
-        return
-    produto["qty"] = produto.get("qty", produto.get("estoque", 0)) + qtd
-    produto["estoque"] = produto["qty"]
-    dados["historico"].insert(0, {"tipo": "entrada", "produto_id": produto["id"],
-        "produto_nome": produto["nome"], "qtd": qtd,
-        "data": datetime.now().isoformat(), "mes": mes_atual()})
-    salvar_dados(dados)
-    await update.message.reply_text(
-        "*Entrada registrada!*\n{}: +{} un\nTotal: {} un".format(produto["nome"], qtd, produto["qty"]),
-        parse_mode="Markdown")
+    elif cmd == "/produtos":
+        dados = garantir_produtos(ler_dados())
+        linhas = ["*Produtos Cadastrados*\n"]
+        for i, p in enumerate(dados["estoque"], 1):
+            qty = p.get("qty", p.get("estoque", 0))
+            margem = ""
+            if p.get("custo", 0) > 0 and p.get("preco", 0) > 0:
+                m = ((p["preco"] - p["custo"]) / p["preco"]) * 100
+                margem = " | Margem: {:.0f}%".format(m)
+            linhas.append("{}. *{}*\n   Custo: {} | Venda: {}{}\n   Estoque: {} un".format(
+                i, p["nome"], real(p.get("custo", 0)), real(p.get("preco", 0)), margem, qty))
+        send(chat_id, "\n".join(linhas))
 
-async def cmd_venda(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if len(args) < 2:
-        await update.message.reply_text("Uso: /venda [produto] [qtd]\nEx: /venda casal 3")
-        return
-    try:
-        qtd = int(args[-1])
-        termo = " ".join(args[:-1])
-    except ValueError:
-        await update.message.reply_text("A quantidade deve ser um numero inteiro.")
-        return
-    dados = garantir_produtos(ler_dados())
-    produto = buscar_produto(dados, termo)
-    if not produto:
-        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
-        return
-    qty_atual = produto.get("qty", produto.get("estoque", 0))
-    if qty_atual < qtd:
-        await update.message.reply_text("Estoque insuficiente! Disponivel: {} un".format(qty_atual))
-        return
-    produto["qty"] = qty_atual - qtd
-    produto["estoque"] = produto["qty"]
-    receita = produto.get("preco", 0) * qtd
-    dados["vendas"].append({"produto_id": produto["id"], "produto_nome": produto["nome"],
-        "qtd": qtd, "preco_unitario": produto.get("preco", 0), "total": receita, "pgto": "Telegram",
-        "data": datetime.now().isoformat(), "mes": mes_atual()})
-    dados["historico"].insert(0, {"tipo": "venda", "produto_id": produto["id"],
-        "produto_nome": produto["nome"], "qtd": qtd, "total": receita,
-        "data": datetime.now().isoformat(), "mes": mes_atual()})
-    salvar_dados(dados)
-    await update.message.reply_text(
-        "*Venda registrada!*\n{}: -{} un\nReceita: {}\nRestante: {} un".format(
-            produto["nome"], qtd, real(receita), produto["qty"]), parse_mode="Markdown")
-
-async def cmd_custo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if len(args) < 2:
-        await update.message.reply_text("Uso: /custo [produto] [valor]\nEx: /custo casal 45.50")
-        return
-    try:
-        valor = float(args[-1].replace(",", "."))
-        termo = " ".join(args[:-1])
-    except ValueError:
-        await update.message.reply_text("Valor invalido.")
-        return
-    dados = garantir_produtos(ler_dados())
-    produto = buscar_produto(dados, termo)
-    if not produto:
-        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
-        return
-    produto["custo"] = valor
-    salvar_dados(dados)
-    await update.message.reply_text(
-        "*Custo atualizado!*\n{}: {}".format(produto["nome"], real(valor)), parse_mode="Markdown")
-
-async def cmd_preco(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if len(args) < 2:
-        await update.message.reply_text("Uso: /preco [produto] [valor]\nEx: /preco casal 89.90")
-        return
-    try:
-        valor = float(args[-1].replace(",", "."))
-        termo = " ".join(args[:-1])
-    except ValueError:
-        await update.message.reply_text("Valor invalido.")
-        return
-    dados = garantir_produtos(ler_dados())
-    produto = buscar_produto(dados, termo)
-    if not produto:
-        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
-        return
-    produto["preco"] = valor
-    salvar_dados(dados)
-    await update.message.reply_text(
-        "*Preco atualizado!*\n{}: {}".format(produto["nome"], real(valor)), parse_mode="Markdown")
-
-async def cmd_despesa(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if len(args) < 2:
-        await update.message.reply_text("Uso: /despesa [valor] [descricao]\nEx: /despesa 500 ADS Facebook")
-        return
-    try:
-        valor = float(args[0].replace(",", "."))
-        descricao = " ".join(args[1:])
-    except ValueError:
-        await update.message.reply_text("Valor invalido.")
-        return
-    dados = ler_dados()
-    dados["despesas"].insert(0, {"id": int(datetime.now().timestamp() * 1000),
-        "valor": valor, "desc": descricao, "descricao": descricao,
-        "categoria": "Outros", "data": datetime.now().isoformat(), "mes": mes_atual()})
-    salvar_dados(dados)
-    await update.message.reply_text(
-        "*Despesa registrada!*\n{}: {}".format(descricao, real(valor)), parse_mode="Markdown")
-
-async def cmd_despesas(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = ler_dados()
-    mes = mes_atual()
-    despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
-    if not despesas_mes:
-        await update.message.reply_text("Nenhuma despesa registrada este mes.")
-        return
-    total = sum(d.get("valor", 0) for d in despesas_mes)
-    linhas = ["*Despesas de {}*\n".format(mes)]
-    for i, d in enumerate(despesas_mes, 1):
-        desc = d.get("desc") or d.get("descricao") or "-"
-        linhas.append("{}. {}: {}".format(i, desc, real(d.get("valor", 0))))
-    linhas.append("\n*Total: {}*".format(real(total)))
-    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
-
-async def cmd_resumo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = garantir_produtos(ler_dados())
-    mes = mes_atual()
-    vendas_mes   = [v for v in dados["vendas"]   if v.get("mes") == mes]
-    despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
-    receita      = sum(v.get("total", 0) for v in vendas_mes)
-    desp_tot     = sum(d.get("valor", 0) for d in despesas_mes)
-    qtd_vend     = sum(v.get("qtd", 0)   for v in vendas_mes)
-    custo_vendas = 0
-    for v in vendas_mes:
-        prod = next((p for p in dados["estoque"] if p["id"] == v.get("produto_id")), None)
-        if prod:
-            custo_vendas += prod.get("custo", 0) * v.get("qtd", 0)
-    lucro = receita - desp_tot - custo_vendas
-    texto = ("*Resumo Financeiro - {}*\n\nReceita: {}\nCusto produtos: {}\n"
-        "Despesas: {}\nLucro Liquido: {}\n\nVendas: {} un em {} transacoes"
-    ).format(mes, real(receita), real(custo_vendas), real(desp_tot), real(lucro), qtd_vend, len(vendas_mes))
-    await update.message.reply_text(texto, parse_mode="Markdown")
-
-async def cmd_alerta(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = garantir_produtos(ler_dados())
-    baixos = [p for p in dados["estoque"] if p.get("qty", p.get("estoque", 0)) < 5]
-    if not baixos:
-        await update.message.reply_text("Todos os produtos com estoque adequado!")
-        return
-    linhas = ["*Produtos com estoque baixo:*\n"]
-    for p in baixos:
-        qty = p.get("qty", p.get("estoque", 0))
-        emoji = "🔴" if qty == 0 else "🟡"
-        linhas.append("{} {}: {} un".format(emoji, p["nome"], qty))
-    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
-
-async def cmd_apagar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = ler_dados()
-    mes = mes_atual()
-    despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
-    if not ctx.args:
-        if not despesas_mes:
-            await update.message.reply_text("Nenhuma despesa este mes.")
+    elif cmd == "/entrada":
+        if len(args) < 2:
+            send(chat_id, "Uso: /entrada [produto] [qtd]\nEx: /entrada casal 10")
             return
-        linhas = ["*Escolha o numero para apagar:*\n"]
+        try:
+            qtd = int(args[-1])
+            termo = " ".join(args[:-1])
+        except ValueError:
+            send(chat_id, "A quantidade deve ser um numero inteiro.")
+            return
+        dados = garantir_produtos(ler_dados())
+        produto = buscar_produto(dados, termo)
+        if not produto:
+            send(chat_id, "Produto '{}' nao encontrado.".format(termo))
+            return
+        produto["qty"] = produto.get("qty", produto.get("estoque", 0)) + qtd
+        produto["estoque"] = produto["qty"]
+        dados["historico"].insert(0, {"tipo": "entrada", "produto_id": produto["id"],
+            "produto_nome": produto["nome"], "qtd": qtd,
+            "data": datetime.now().isoformat(), "mes": mes_atual()})
+        salvar_dados(dados)
+        send(chat_id, "*Entrada registrada!*\n{}: +{} un\nTotal: {} un".format(
+            produto["nome"], qtd, produto["qty"]))
+
+    elif cmd == "/venda":
+        if len(args) < 2:
+            send(chat_id, "Uso: /venda [produto] [qtd]\nEx: /venda casal 3")
+            return
+        try:
+            qtd = int(args[-1])
+            termo = " ".join(args[:-1])
+        except ValueError:
+            send(chat_id, "A quantidade deve ser um numero inteiro.")
+            return
+        dados = garantir_produtos(ler_dados())
+        produto = buscar_produto(dados, termo)
+        if not produto:
+            send(chat_id, "Produto '{}' nao encontrado.".format(termo))
+            return
+        qty_atual = produto.get("qty", produto.get("estoque", 0))
+        if qty_atual < qtd:
+            send(chat_id, "Estoque insuficiente! Disponivel: {} un".format(qty_atual))
+            return
+        produto["qty"] = qty_atual - qtd
+        produto["estoque"] = produto["qty"]
+        receita = produto.get("preco", 0) * qtd
+        dados["vendas"].append({"produto_id": produto["id"], "produto_nome": produto["nome"],
+            "qtd": qtd, "preco_unitario": produto.get("preco", 0), "total": receita, "pgto": "Telegram",
+            "data": datetime.now().isoformat(), "mes": mes_atual()})
+        dados["historico"].insert(0, {"tipo": "venda", "produto_id": produto["id"],
+            "produto_nome": produto["nome"], "qtd": qtd, "total": receita,
+            "data": datetime.now().isoformat(), "mes": mes_atual()})
+        salvar_dados(dados)
+        send(chat_id, "*Venda registrada!*\n{}: -{} un\nReceita: {}\nRestante: {} un".format(
+            produto["nome"], qtd, real(receita), produto["qty"]))
+
+    elif cmd == "/custo":
+        if len(args) < 2:
+            send(chat_id, "Uso: /custo [produto] [valor]\nEx: /custo casal 45.50")
+            return
+        try:
+            valor = float(args[-1].replace(",", "."))
+            termo = " ".join(args[:-1])
+        except ValueError:
+            send(chat_id, "Valor invalido.")
+            return
+        dados = garantir_produtos(ler_dados())
+        produto = buscar_produto(dados, termo)
+        if not produto:
+            send(chat_id, "Produto '{}' nao encontrado.".format(termo))
+            return
+        produto["custo"] = valor
+        salvar_dados(dados)
+        send(chat_id, "*Custo atualizado!*\n{}: {}".format(produto["nome"], real(valor)))
+
+    elif cmd == "/preco":
+        if len(args) < 2:
+            send(chat_id, "Uso: /preco [produto] [valor]\nEx: /preco casal 89.90")
+            return
+        try:
+            valor = float(args[-1].replace(",", "."))
+            termo = " ".join(args[:-1])
+        except ValueError:
+            send(chat_id, "Valor invalido.")
+            return
+        dados = garantir_produtos(ler_dados())
+        produto = buscar_produto(dados, termo)
+        if not produto:
+            send(chat_id, "Produto '{}' nao encontrado.".format(termo))
+            return
+        produto["preco"] = valor
+        salvar_dados(dados)
+        send(chat_id, "*Preco atualizado!*\n{}: {}".format(produto["nome"], real(valor)))
+
+    elif cmd == "/despesa":
+        if len(args) < 2:
+            send(chat_id, "Uso: /despesa [valor] [descricao]\nEx: /despesa 500 ADS Facebook")
+            return
+        try:
+            valor = float(args[0].replace(",", "."))
+            descricao = " ".join(args[1:])
+        except ValueError:
+            send(chat_id, "Valor invalido.")
+            return
+        dados = ler_dados()
+        dados["despesas"].insert(0, {"id": int(datetime.now().timestamp() * 1000),
+            "valor": valor, "desc": descricao, "descricao": descricao,
+            "categoria": "Outros", "data": datetime.now().isoformat(), "mes": mes_atual()})
+        salvar_dados(dados)
+        send(chat_id, "*Despesa registrada!*\n{}: {}".format(descricao, real(valor)))
+
+    elif cmd == "/despesas":
+        dados = ler_dados()
+        mes = mes_atual()
+        despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
+        if not despesas_mes:
+            send(chat_id, "Nenhuma despesa registrada este mes.")
+            return
+        total = sum(d.get("valor", 0) for d in despesas_mes)
+        linhas = ["*Despesas de {}*\n".format(mes)]
         for i, d in enumerate(despesas_mes, 1):
             desc = d.get("desc") or d.get("descricao") or "-"
             linhas.append("{}. {}: {}".format(i, desc, real(d.get("valor", 0))))
-        linhas.append("\nUse: /apagar [numero]")
-        await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
-        return
-    try:
-        num = int(ctx.args[0])
-        if num < 1 or num > len(despesas_mes):
-            raise ValueError
-    except ValueError:
-        await update.message.reply_text("Numero invalido.")
-        return
-    despesa_alvo = despesas_mes[num - 1]
-    dados["despesas"].remove(despesa_alvo)
-    salvar_dados(dados)
-    desc = despesa_alvo.get("desc") or despesa_alvo.get("descricao") or "-"
-    await update.message.reply_text(
-        "*Apagado:* {}: {}".format(desc, real(despesa_alvo.get("valor", 0))), parse_mode="Markdown")
+        linhas.append("\n*Total: {}*".format(real(total)))
+        send(chat_id, "\n".join(linhas))
 
-async def cmd_limpar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    dados = ler_dados()
-    mes = mes_atual()
-    antes = len(dados["despesas"])
-    dados["despesas"] = [d for d in dados["despesas"] if d.get("mes") != mes]
-    salvar_dados(dados)
-    removidas = antes - len(dados["despesas"])
-    await update.message.reply_text(
-        "*{} despesa(s) apagada(s)* do mes {}.".format(removidas, mes), parse_mode="Markdown")
+    elif cmd == "/resumo":
+        dados = garantir_produtos(ler_dados())
+        mes = mes_atual()
+        vendas_mes   = [v for v in dados["vendas"]   if v.get("mes") == mes]
+        despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
+        receita      = sum(v.get("total", 0) for v in vendas_mes)
+        desp_tot     = sum(d.get("valor", 0) for d in despesas_mes)
+        qtd_vend     = sum(v.get("qtd", 0)   for v in vendas_mes)
+        custo_vendas = 0
+        for v in vendas_mes:
+            prod = next((p for p in dados["estoque"] if p["id"] == v.get("produto_id")), None)
+            if prod:
+                custo_vendas += prod.get("custo", 0) * v.get("qtd", 0)
+        lucro = receita - desp_tot - custo_vendas
+        send(chat_id, ("*Resumo Financeiro - {}*\n\nReceita: {}\nCusto produtos: {}\n"
+            "Despesas: {}\nLucro Liquido: {}\n\nVendas: {} un em {} transacoes"
+        ).format(mes, real(receita), real(custo_vendas), real(desp_tot), real(lucro), qtd_vend, len(vendas_mes)))
+
+    elif cmd == "/alerta":
+        dados = garantir_produtos(ler_dados())
+        baixos = [p for p in dados["estoque"] if p.get("qty", p.get("estoque", 0)) < 5]
+        if not baixos:
+            send(chat_id, "Todos os produtos com estoque adequado!")
+            return
+        linhas = ["*Produtos com estoque baixo:*\n"]
+        for p in baixos:
+            qty = p.get("qty", p.get("estoque", 0))
+            emoji = "🔴" if qty == 0 else "🟡"
+            linhas.append("{} {}: {} un".format(emoji, p["nome"], qty))
+        send(chat_id, "\n".join(linhas))
+
+    elif cmd == "/apagar":
+        dados = ler_dados()
+        mes = mes_atual()
+        despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
+        if not args:
+            if not despesas_mes:
+                send(chat_id, "Nenhuma despesa este mes.")
+                return
+            linhas = ["*Escolha o numero para apagar:*\n"]
+            for i, d in enumerate(despesas_mes, 1):
+                desc = d.get("desc") or d.get("descricao") or "-"
+                linhas.append("{}. {}: {}".format(i, desc, real(d.get("valor", 0))))
+            linhas.append("\nUse: /apagar [numero]")
+            send(chat_id, "\n".join(linhas))
+            return
+        try:
+            num = int(args[0])
+            if num < 1 or num > len(despesas_mes):
+                raise ValueError
+        except ValueError:
+            send(chat_id, "Numero invalido.")
+            return
+        despesa_alvo = despesas_mes[num - 1]
+        dados["despesas"].remove(despesa_alvo)
+        salvar_dados(dados)
+        desc = despesa_alvo.get("desc") or despesa_alvo.get("descricao") or "-"
+        send(chat_id, "*Apagado:* {}: {}".format(desc, real(despesa_alvo.get("valor", 0))))
+
+    elif cmd == "/limpar":
+        dados = ler_dados()
+        mes = mes_atual()
+        antes = len(dados["despesas"])
+        dados["despesas"] = [d for d in dados["despesas"] if d.get("mes") != mes]
+        salvar_dados(dados)
+        removidas = antes - len(dados["despesas"])
+        send(chat_id, "*{} despesa(s) apagada(s)* do mes {}.".format(removidas, mes))
 
 def main():
-    print("FinStack Bot iniciando...")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start",    cmd_start))
-    app.add_handler(CommandHandler("estoque",  cmd_estoque))
-    app.add_handler(CommandHandler("produtos", cmd_produtos))
-    app.add_handler(CommandHandler("entrada",  cmd_entrada))
-    app.add_handler(CommandHandler("venda",    cmd_venda))
-    app.add_handler(CommandHandler("custo",    cmd_custo))
-    app.add_handler(CommandHandler("preco",    cmd_preco))
-    app.add_handler(CommandHandler("despesa",  cmd_despesa))
-    app.add_handler(CommandHandler("despesas", cmd_despesas))
-    app.add_handler(CommandHandler("resumo",   cmd_resumo))
-    app.add_handler(CommandHandler("alerta",   cmd_alerta))
-    app.add_handler(CommandHandler("apagar",   cmd_apagar))
-    app.add_handler(CommandHandler("limpar",   cmd_limpar))
-    print("Bot rodando! Aguardando comandos...")
-    app.run_polling()
+    print("FinStack Bot iniciando (requests puro)...")
+    send(CHAT_ID, "*FinStack Bot Online!*\nBot iniciado com sucesso no Railway.\nMande /start para ver os comandos.")
+    offset = None
+    while True:
+        try:
+            updates = get_updates(offset)
+            for update in updates:
+                offset = update["update_id"] + 1
+                msg = update.get("message", {})
+                chat_id = str(msg.get("chat", {}).get("id", ""))
+                text = msg.get("text", "")
+                if text and chat_id:
+                    print("Mensagem: {} de {}".format(text, chat_id))
+                    handle(chat_id, text)
+        except Exception as e:
+            print("Erro no loop:", e)
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
