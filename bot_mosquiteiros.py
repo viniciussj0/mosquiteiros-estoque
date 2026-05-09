@@ -224,8 +224,11 @@ async def cmd_despesa(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     dados = ler_dados()
     dados["despesas"].append({
+        "id": int(datetime.now().timestamp() * 1000),
         "valor": valor,
+        "desc": descricao,
         "descricao": descricao,
+        "categoria": "Outros",
         "data": datetime.now().isoformat(),
         "mes": mes_atual()
     })
