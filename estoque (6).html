@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🦟 Estoque Mosquiteiros</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;--accent:#00e5a0;--warn:#ffd166;--danger:#ef476f;--text:#f0f0f0;--muted:#888;--radius:12px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+  .logo{font-size:1.3rem;font-weight:800;letter-spacing:-0.5px}
+  .logo span{color:var(--accent)}
+  .sync-badge{font-family:'DM Mono',monospace;font-size:.72rem;color:var(--accent);background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);padding:4px 10px;border-radius:20px;display:flex;align-items:center;gap:6px}
+  .sync-dot{width:7px;height:7px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .tabs{display:flex;gap:4px;padding:16px 24px 0;border-bottom:1px solid var(--border);overflow-x:auto}
+  .tab{padding:10px 20px;border-radius:12px 12px 0 0;border:none;background:transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+  .tab:hover{color:var(--text)}
+  .tab.active{background:var(--surface);color:var(--accent);border-bottom:2px solid var(--accent)}
+  main{padding:24px;max-width:960px;margin:0 auto}
+  .panel{display:none}.panel.active{display:block}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden}
+  .kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--accent)}
+  .kpi-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .kpi-value{font-size:1.6rem;font-weight:800}
+  .kpi-value.danger{color:var(--danger)}.kpi-value.warn{color:var(--warn)}.kpi-value.ok{color:var(--accent)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
+  .card-header{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700;display:flex;align-items:center;justify-content:space-between;font-size:.95rem}
+  table{width:100%;border-collapse:collapse}
+  th{padding:12px 16px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)}
+  td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:.9rem}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--surface2)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:600;font-family:'DM Mono',monospace}
+  .badge-ok{background:rgba(0,229,160,.15);color:var(--accent)}
+  .badge-warn{background:rgba(255,209,102,.15);color:var(--warn)}
+  .badge-danger{background:rgba(239,71,111,.15);color:var(--danger)}
+  .qty-ctrl{display:flex;align-items:center;gap:8px}
+  .qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:6px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+  .qty-btn:hover{background:var(--accent);border-color:var(--accent);color:#000}
+  .qty-val{font-family:'DM Mono',monospace;font-weight:500;min-width:28px;text-align:center}
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:20px}
+  .form-group{display:flex;flex-direction:column;gap:6px}
+  label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  input,select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-family:'DM Mono',monospace;font-size:.9rem;outline:none;transition:border .2s}
+  input:focus,select:focus{border-color:var(--accent)}
+  .btn{padding:10px 20px;border-radius:8px;border:none;font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;cursor:pointer;transition:all .15s}
+  .btn-primary{background:var(--accent);color:#000}.btn-primary:hover{background:#00c887}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-sm{padding:6px 12px;font-size:.8rem}
+  .desp-item{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+  .desp-item:last-child{border-bottom:none}
+  .desp-nome{font-weight:600}.desp-data{font-size:.78rem;color:var(--muted);font-family:'DM Mono',monospace}
+  .desp-valor{font-family:'DM Mono',monospace;color:var(--danger);font-weight:600}
+  .fin-row{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border)}
+  .fin-row:last-child{border-bottom:none}
+  .fin-label{color:var(--muted);font-size:.9rem}.fin-val{font-family:'DM Mono',monospace;font-weight:600}
+  .fin-row.total{background:var(--surface2)}.fin-row.total .fin-label{color:var(--text);font-weight:700}.fin-row.total .fin-val{font-size:1.2rem;color:var(--accent)}
+  .filter-bar{display:flex;gap:12px;align-items:center;margin-bottom:20px}
+  .filter-bar select{min-width:140px}
+  .empty{padding:40px;text-align:center;color:var(--muted);font-size:.9rem}
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#000;padding:12px 20px;border-radius:10px;font-weight:700;font-size:.9rem;transform:translateY(80px);opacity:0;transition:all .3s;z-index:999}
+  #toast.show{transform:translateY(0);opacity:1}
+  @media(max-width:600px){main{padding:16px}header{padding:12px 16px}.tabs{padding:12px 16px 0}.kpi-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}td,th{padding:10px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🦟 Mosq<span>UI</span>teiros</div>
+  <div class="sync-badge"><div class="sync-dot"></div><span id="sync-label">Carregando...</span></div>
+</header>
+<div class="tabs">
+  <button class="tab active" onclick="showTab('estoque',this)">📦 Estoque</button>
+  <button class="tab" onclick="showTab('despesas',this)">💸 Despesas</button>
+  <button class="tab" onclick="showTab('historico',this)">📋 Histórico</button>
+  <button class="tab" onclick="showTab('financeiro',this)">📊 Financeiro</button>
+</div>
+<main>
+  <!-- ESTOQUE -->
+  <div id="panel-estoque" class="panel active">
+    <div class="kpi-grid" id="kpi-estoque"></div>
+    <div class="card">
+      <div class="card-header">Produtos</div>
+      <table><thead><tr><th>Produto</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Status</th></tr></thead>
+      <tbody id="tabela-estoque"></tbody></table>
+    </div>
+  </div>
+  <!-- DESPESAS -->
+  <div id="panel-despesas" class="panel">
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-header">➕ Nova Despesa</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Valor (R$)</label><input type="number" id="desp-valor" placeholder="0.00" step="0.01"></div>
+        <div class="form-group"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
+        <div class="form-group"><label>Categoria</label>
+          <select id="desp-cat"><option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option><option>Frete</option><option>Mão de obra</option><option>Outros</option></select>
+        </div>
+        <div class="form-group" style="justify-content:flex-end"><button class="btn btn-primary" onclick="addDespesa()">Registrar</button></div>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <select id="filtro-mes" onchange="renderDespesas()"></select>
+      <div id="total-despesas" style="font-family:'DM Mono',monospace;color:var(--danger);font-weight:700"></div>
+    </div>
+    <div class="card"><div id="lista-despesas"></div></div>
+  </div>
+  <!-- HISTÓRICO -->
+  <div id="panel-historico" class="panel">
+    <div class="card">
+      <div class="card-header">Vendas Registradas</div>
+      <table><thead><tr><th>Data</th><th>Produto</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
+      <tbody id="tabela-historico"></tbody></table>
+    </div>
+    <div class="card">
+      <div class="card-header">➕ Registrar Venda</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Produto</label><select id="venda-produto"></select></div>
+        <div class="form-group"><label>Quantidade</label><input type="number" id="venda-qtd" placeholder="1" min="1" value="1"></div>
+        <div class="form-group" style="justify-content:flex-end"><button class="btn btn-primary" onclick="registrarVenda()">Registrar Venda</button></div>
+      </div>
+    </div>
+  </div>
+  <!-- FINANCEIRO -->
+  <div id="panel-financeiro" class="panel">
+    <div class="filter-bar"><select id="filtro-mes-fin" onchange="renderFinanceiro()"></select></div>
+    <div class="kpi-grid" id="kpi-fin"></div>
+    <div class="card"><div class="card-header">Demonstrativo</div><div id="demonstrativo"></div></div>
+    <div class="card" style="margin-top:20px">
+      <div class="card-header">Vendas por Produto</div>
+      <table><thead><tr><th>Produto</th><th>Qtd</th><th>Receita</th><th>Custo</th><th>Lucro</th></tr></thead>
+      <tbody id="tabela-fin-produtos"></tbody></table>
+    </div>
+  </div>
+</main>
+<div id="toast"></div>
+<script>
+const JSONBIN_KEY="$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq";
+const JSONBIN_BIN="69fbf4d9adc21f119a64af4c";
+const JSONBIN_URL=`https://api.jsonbin.io/v3/b/${JSONBIN_BIN}`;
+const HEADERS={"X-Master-Key":JSONBIN_KEY,"Content-Type":"application/json"};
+const PRODUTOS_PADRAO=[
+  {id:"MGA-001",nome:"Mosquiteiro Gigante Aberto",estoque:0,custo:0,preco:0},
+  {id:"PES-001",nome:"Peseira",estoque:0,custo:0,preco:0},
+  {id:"CAL-001",nome:"Capa de Almofada",estoque:0,custo:0,preco:0},
+  {id:"MFI-001",nome:"Mosquiteiro Filo",estoque:0,custo:0,preco:0},
+  {id:"MCP-001",nome:"Mosquiteiro Casal Padrão",estoque:0,custo:0,preco:0},
+  {id:"MGF-001",nome:"Mosquiteiro Gigante Fechado",estoque:0,custo:0,preco:0},
+];
+let dados={despesas:[],estoque:[],vendas:[]};
+let saving=false;
+
+async function lerDados(){
+  try{
+    const r=await fetch(JSONBIN_URL,{headers:{"X-Master-Key":JSONBIN_KEY}});
+    const j=await r.json();
+    dados=j.record||{despesas:[],estoque:[],vendas:[]};
+    dados.despesas=dados.despesas||[];dados.estoque=dados.estoque||[];dados.vendas=dados.vendas||[];
+    garantirProdutos();
+    document.getElementById("sync-label").textContent="Sincronizado ✓";
+  }catch(e){document.getElementById("sync-label").textContent="Erro de sync";console.error(e)}
+}
+async function salvarDados(){
+  if(saving)return;saving=true;
+  document.getElementById("sync-label").textContent="Salvando...";
+  try{await fetch(JSONBIN_URL,{method:"PUT",headers:HEADERS,body:JSON.stringify(dados)});
+    document.getElementById("sync-label").textContent="Sincronizado ✓";
+  }catch(e){document.getElementById("sync-label").textContent="Erro ao salvar"}
+  saving=false;
+}
+function garantirProdutos(){
+  const ids=dados.estoque.map(p=>p.id);
+  for(const p of PRODUTOS_PADRAO)if(!ids.includes(p.id))dados.estoque.push({...p});
+}
+function real(v){return"R$ "+Number(v).toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".")}
+function mesAtual(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
+function fmtData(iso){const d=new Date(iso);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2500)}
+
+function showTab(tab,el){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById("panel-"+tab).classList.add("active");
+  el.classList.add("active");renderAll();
+}
+function popularMeses(id){
+  const sel=document.getElementById(id);
+  const meses=new Set([mesAtual()]);
+  dados.despesas.forEach(d=>meses.add(d.mes));dados.vendas.forEach(v=>meses.add(v.mes));
+  const ord=[...meses].sort().reverse();
+  const atual=sel.value||mesAtual();
+  sel.innerHTML=ord.map(m=>`<option value="${m}"${m===atual?" selected":""}>${m}</option>`).join("");
+}
+
+function renderEstoque(){
+  const tbody=document.getElementById("tabela-estoque");
+  const total=dados.estoque.reduce((s,p)=>s+p.estoque,0);
+  const zer=dados.estoque.filter(p=>p.estoque===0).length;
+  const bx=dados.estoque.filter(p=>p.estoque>0&&p.estoque<5).length;
+  document.getElementById("kpi-estoque").innerHTML=`
+    <div class="kpi"><div class="kpi-label">Total Estoque</div><div class="kpi-value ok">${total}</div></div>
+    <div class="kpi"><div class="kpi-label">Zerados</div><div class="kpi-value ${zer>0?"danger":"ok"}">${zer}</div></div>
+    <div class="kpi"><div class="kpi-label">Estoque Baixo</div><div class="kpi-value ${bx>0?"warn":"ok"}">${bx}</div></div>
+    <div class="kpi"><div class="kpi-label">Produtos</div><div class="kpi-value">${dados.estoque.length}</div></div>`;
+  tbody.innerHTML=dados.estoque.map(p=>{
+    const mg=(p.custo>0&&p.preco>0)?(((p.preco-p.custo)/p.preco)*100).toFixed(0)+"%":"-";
+    const bc=p.estoque===0?"badge-danger":p.estoque<5?"badge-warn":"badge-ok";
+    const lb=p.estoque===0?"Zerado":p.estoque<5?"Baixo":"OK";
+    return`<tr>
+      <td><strong>${p.nome}</strong><br><span style="font-size:.75rem;color:var(--muted);font-family:'DM Mono',monospace">${p.id}</span></td>
+      <td><input type="number" value="${p.custo}" step="0.01" style="width:90px;padding:4px 8px;font-size:.82rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'DM Mono',monospace" onchange="atualizarCampo('${p.id}','custo',this.value)"></td>
+      <td><input type="number" value="${p.preco}" step="0.01" style="width:90px;padding:4px 8px;font-size:.82rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'DM Mono',monospace" onchange="atualizarCampo('${p.id}','preco',this.value)"></td>
+      <td style="font-family:'DM Mono',monospace">${mg}</td>
+      <td><div class="qty-ctrl"><button class="qty-btn" onclick="alterarEstoque('${p.id}',-1)">−</button><span class="qty-val">${p.estoque}</span><button class="qty-btn" onclick="alterarEstoque('${p.id}',1)">+</button></div></td>
+      <td><span class="badge ${bc}">${lb}</span></td>
+    </tr>`;
+  }).join("");
+}
+function atualizarCampo(id,campo,valor){
+  const p=dados.estoque.find(x=>x.id===id);
+  if(p){p[campo]=parseFloat(valor)||0;salvarDados();renderEstoque();}
+}
+function alterarEstoque(id,delta){
+  const p=dados.estoque.find(x=>x.id===id);
+  if(!p||p.estoque+delta<0)return;
+  p.estoque+=delta;salvarDados();renderEstoque();
+}
+
+function renderDespesas(){
+  popularMeses("filtro-mes");
+  const mes=document.getElementById("filtro-mes").value||mesAtual();
+  const lista=dados.despesas.filter(d=>d.mes===mes);
+  const total=lista.reduce((s,d)=>s+d.valor,0);
+  document.getElementById("total-despesas").textContent="Total: "+real(total);
+  const div=document.getElementById("lista-despesas");
+  if(!lista.length){div.innerHTML='<div class="empty">Nenhuma despesa neste mês</div>';return}
+  div.innerHTML=lista.map(d=>{
+    const idx=dados.despesas.indexOf(d);
+    return`<div class="desp-item">
+      <div><div class="desp-nome">${d.descricao}</div><div class="desp-data">${d.categoria||""} · ${fmtData(d.data)}</div></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="desp-valor">${real(d.valor)}</span>
+        <button class="btn btn-danger btn-sm" onclick="removeDespesa(${idx})">×</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+function addDespesa(){
+  const valor=parseFloat(document.getElementById("desp-valor").value);
+  const desc=document.getElementById("desp-desc").value.trim();
+  const cat=document.getElementById("desp-cat").value;
+  if(!valor||!desc){toast("Preencha valor e descrição!");return}
+  dados.despesas.push({valor,descricao:desc,categoria:cat,data:new Date().toISOString(),mes:mesAtual()});
+  salvarDados();
+  document.getElementById("desp-valor").value="";document.getElementById("desp-desc").value="";
+  renderDespesas();toast("✅ Despesa registrada!");
+}
+function removeDespesa(idx){dados.despesas.splice(idx,1);salvarDados();renderDespesas();toast("🗑 Despesa removida")}
+
+function renderHistorico(){
+  const sel=document.getElementById("venda-produto");
+  sel.innerHTML=dados.estoque.map(p=>`<option value="${p.id}">${p.nome} (${p.estoque} un)</option>`).join("");
+  const tbody=document.getElementById("tabela-historico");
+  if(!dados.vendas.length){tbody.innerHTML='<tr><td colspan="5" class="empty">Nenhuma venda</td></tr>';return}
+  tbody.innerHTML=[...dados.vendas].reverse().map(v=>`<tr>
+    <td style="font-family:'DM Mono',monospace;font-size:.8rem">${fmtData(v.data)}</td>
+    <td>${v.produto_nome}</td><td>${v.qtd}</td>
+    <td>${real(v.preco_unitario)}</td>
+    <td style="color:var(--accent);font-weight:700">${real(v.total)}</td>
+  </tr>`).join("");
+}
+function registrarVenda(){
+  const id=document.getElementById("venda-produto").value;
+  const qtd=parseInt(document.getElementById("venda-qtd").value);
+  const p=dados.estoque.find(x=>x.id===id);
+  if(!p||!qtd||qtd<1){toast("Dados inválidos");return}
+  if(p.estoque<qtd){toast("⚠️ Estoque insuficiente!");return}
+  p.estoque-=qtd;
+  dados.vendas.push({produto_id:p.id,produto_nome:p.nome,qtd,preco_unitario:p.preco,total:p.preco*qtd,data:new Date().toISOString(),mes:mesAtual()});
+  salvarDados();renderAll();toast("✅ Venda registrada!");
+}
+
+function renderFinanceiro(){
+  popularMeses("filtro-mes-fin");
+  const mes=document.getElementById("filtro-mes-fin").value||mesAtual();
+  const vendas=dados.vendas.filter(v=>v.mes===mes);
+  const despesas=dados.despesas.filter(d=>d.mes===mes);
+  const receita=vendas.reduce((s,v)=>s+v.total,0);
+  const desp_tot=despesas.reduce((s,d)=>s+d.valor,0);
+  let custo_prod=0;
+  for(const v of vendas){const p=dados.estoque.find(x=>x.id===v.produto_id);if(p)custo_prod+=p.custo*v.qtd}
+  const lucro=receita-desp_tot-custo_prod;
+  const margem=receita>0?((lucro/receita)*100).toFixed(1):0;
+  document.getElementById("kpi-fin").innerHTML=`
+    <div class="kpi"><div class="kpi-label">Receita</div><div class="kpi-value ok">${real(receita)}</div></div>
+    <div class="kpi"><div class="kpi-label">Despesas</div><div class="kpi-value danger">${real(desp_tot)}</div></div>
+    <div class="kpi"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucro>=0?"ok":"danger"}">${real(lucro)}</div></div>
+    <div class="kpi"><div class="kpi-label">Margem</div><div class="kpi-value ${margem>=30?"ok":margem>=15?"warn":"danger"}">${margem}%</div></div>`;
+  document.getElementById("demonstrativo").innerHTML=`
+    <div class="fin-row"><span class="fin-label">💰 Receita bruta</span><span class="fin-val" style="color:var(--accent)">${real(receita)}</span></div>
+    <div class="fin-row"><span class="fin-label">🏷 Custo dos produtos</span><span class="fin-val" style="color:var(--warn)">- ${real(custo_prod)}</span></div>
+    <div class="fin-row"><span class="fin-label">💸 Despesas operacionais</span><span class="fin-val" style="color:var(--danger)">- ${real(desp_tot)}</span></div>
+    <div class="fin-row total"><span class="fin-label">✅ Lucro Líquido</span><span class="fin-val">${real(lucro)}</span></div>`;
+  const porProd={};
+  for(const v of vendas){
+    if(!porProd[v.produto_id])porProd[v.produto_id]={nome:v.produto_nome,qtd:0,receita:0,custo:0};
+    const p=dados.estoque.find(x=>x.id===v.produto_id);
+    porProd[v.produto_id].qtd+=v.qtd;
+    porProd[v.produto_id].receita+=v.total;
+    porProd[v.produto_id].custo+=(p?p.custo:0)*v.qtd;
+  }
+  const itens=Object.values(porProd);
+  const tbody=document.getElementById("tabela-fin-produtos");
+  if(!itens.length){tbody.innerHTML='<tr><td colspan="5" class="empty">Nenhuma venda neste mês</td></tr>';return}
+  tbody.innerHTML=itens.map(x=>{
+    const lp=x.receita-x.custo;
+    return`<tr><td>${x.nome}</td><td>${x.qtd}</td><td style="color:var(--accent)">${real(x.receita)}</td><td style="color:var(--warn)">${real(x.custo)}</td><td style="color:${lp>=0?"var(--accent)":"var(--danger)"};font-weight:700">${real(lp)}</td></tr>`;
+  }).join("");
+}
+
+function renderAll(){renderEstoque();renderDespesas();renderHistorico();renderFinanceiro()}
+
+async function init(){
+  await lerDados();renderAll();
+  setInterval(async()=>{await lerDados();renderAll()},30000);
+}
+init();
+</script>
+</body>
+</html>
