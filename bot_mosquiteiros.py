@@ -334,7 +334,7 @@ async def notificar_inicio(app):
 
 def main():
     print("FinStack Bot iniciando...")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(notificar_inicio).build()
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start",    cmd_start))
     app.add_handler(CommandHandler("estoque",  cmd_estoque))
     app.add_handler(CommandHandler("produtos", cmd_produtos))
