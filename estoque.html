@@ -1,330 +1,637 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🦟 Estoque Mosquiteiros</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>FinStack — Gestão de Estoque & Financeiro</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#242424;--border:#2e2e2e;--accent:#00e5a0;--warn:#ffd166;--danger:#ef476f;--text:#f0f0f0;--muted:#888;--radius:12px}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-  header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-  .logo{font-size:1.3rem;font-weight:800;letter-spacing:-0.5px}
-  .logo span{color:var(--accent)}
-  .sync-badge{font-family:'DM Mono',monospace;font-size:.72rem;color:var(--accent);background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.3);padding:4px 10px;border-radius:20px;display:flex;align-items:center;gap:6px}
-  .sync-dot{width:7px;height:7px;background:var(--accent);border-radius:50%;animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .tabs{display:flex;gap:4px;padding:16px 24px 0;border-bottom:1px solid var(--border);overflow-x:auto}
-  .tab{padding:10px 20px;border-radius:12px 12px 0 0;border:none;background:transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
-  .tab:hover{color:var(--text)}
-  .tab.active{background:var(--surface);color:var(--accent);border-bottom:2px solid var(--accent)}
-  main{padding:24px;max-width:960px;margin:0 auto}
-  .panel{display:none}.panel.active{display:block}
-  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
-  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden}
-  .kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--accent)}
-  .kpi-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-  .kpi-value{font-size:1.6rem;font-weight:800}
-  .kpi-value.danger{color:var(--danger)}.kpi-value.warn{color:var(--warn)}.kpi-value.ok{color:var(--accent)}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:24px}
-  .card-header{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700;display:flex;align-items:center;justify-content:space-between;font-size:.95rem}
-  table{width:100%;border-collapse:collapse}
-  th{padding:12px 16px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border-bottom:1px solid var(--border)}
-  td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:.9rem}
-  tr:last-child td{border-bottom:none}
-  tr:hover td{background:var(--surface2)}
-  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:600;font-family:'DM Mono',monospace}
-  .badge-ok{background:rgba(0,229,160,.15);color:var(--accent)}
-  .badge-warn{background:rgba(255,209,102,.15);color:var(--warn)}
-  .badge-danger{background:rgba(239,71,111,.15);color:var(--danger)}
-  .qty-ctrl{display:flex;align-items:center;gap:8px}
-  .qty-btn{width:28px;height:28px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:6px;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-  .qty-btn:hover{background:var(--accent);border-color:var(--accent);color:#000}
-  .qty-val{font-family:'DM Mono',monospace;font-weight:500;min-width:28px;text-align:center}
-  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:20px}
-  .form-group{display:flex;flex-direction:column;gap:6px}
-  label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  input,select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:8px;font-family:'DM Mono',monospace;font-size:.9rem;outline:none;transition:border .2s}
-  input:focus,select:focus{border-color:var(--accent)}
-  .btn{padding:10px 20px;border-radius:8px;border:none;font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;cursor:pointer;transition:all .15s}
-  .btn-primary{background:var(--accent);color:#000}.btn-primary:hover{background:#00c887}
-  .btn-danger{background:var(--danger);color:#fff}
-  .btn-sm{padding:6px 12px;font-size:.8rem}
-  .desp-item{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
-  .desp-item:last-child{border-bottom:none}
-  .desp-nome{font-weight:600}.desp-data{font-size:.78rem;color:var(--muted);font-family:'DM Mono',monospace}
-  .desp-valor{font-family:'DM Mono',monospace;color:var(--danger);font-weight:600}
-  .fin-row{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border)}
-  .fin-row:last-child{border-bottom:none}
-  .fin-label{color:var(--muted);font-size:.9rem}.fin-val{font-family:'DM Mono',monospace;font-weight:600}
-  .fin-row.total{background:var(--surface2)}.fin-row.total .fin-label{color:var(--text);font-weight:700}.fin-row.total .fin-val{font-size:1.2rem;color:var(--accent)}
-  .filter-bar{display:flex;gap:12px;align-items:center;margin-bottom:20px}
-  .filter-bar select{min-width:140px}
-  .empty{padding:40px;text-align:center;color:var(--muted);font-size:.9rem}
-  #toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#000;padding:12px 20px;border-radius:10px;font-weight:700;font-size:.9rem;transform:translateY(80px);opacity:0;transition:all .3s;z-index:999}
-  #toast.show{transform:translateY(0);opacity:1}
-  @media(max-width:600px){main{padding:16px}header{padding:12px 16px}.tabs{padding:12px 16px 0}.kpi-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}td,th{padding:10px}}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f3ee;--surface:#fff;--surface2:#f0ede6;--border:#ddd9d0;
+  --text:#1a1917;--text2:#6b6760;--text3:#9d9890;
+  --accent:#1a4a6b;--accent-light:#e8f0f7;
+  --accent2:#2d7d4f;--accent2-light:#e8f4ed;
+  --danger:#b33a2b;--danger-light:#fdf0ee;
+  --warn:#8a5e1a;--warn-light:#fef9ed;
+  --info:#1e4d8c;--info-light:#eef3fb;
+  --radius:10px;--radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)
+}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+.header{background:var(--accent);color:#fff;padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.hbrand{display:flex;align-items:center;gap:12px}
+.hbrand h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.hbrand h1 span{color:#5bc4f5}
+.hbrand small{font-size:11px;font-weight:300;opacity:.7;display:block;margin-top:-2px}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.hdate{font-size:11px;opacity:.7;font-family:'JetBrains Mono',monospace}
+.sync-pill{font-size:10px;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:5px;opacity:.85}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:#5bc4f5;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.tabs{background:var(--surface);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;overflow-x:auto}
+.tab{padding:14px 20px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.tab:hover{color:var(--accent)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.main{padding:2rem;max-width:1240px;margin:0 auto}
+.page{display:none}.page.active{display:block}
+.sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:2rem}
+.sum-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;box-shadow:var(--shadow);border-left:3px solid var(--accent)}
+.sum-card.ok{border-left-color:var(--accent2)}.sum-card.warn{border-left-color:var(--warn)}.sum-card.danger{border-left-color:var(--danger)}
+.sum-card .lbl{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+.sum-card .val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.sum-card .sub{font-size:11px;color:var(--text3);margin-top:3px}
+.sum-card.ok .val{color:var(--accent2)}.sum-card.warn .val{color:var(--warn)}.sum-card.danger .val{color:var(--danger)}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
+.sec-title{font-size:15px;font-weight:600}
+.twrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--surface2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg)}
+tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600}
+.badge-ok{background:var(--accent2-light);color:var(--accent2)}
+.badge-warn{background:var(--warn-light);color:var(--warn)}
+.badge-danger{background:var(--danger-light);color:var(--danger)}
+.qty-ctrl{display:flex;align-items:center;gap:4px}
+.qty-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);cursor:pointer;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.qty-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qty-disp{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;min-width:36px;text-align:center}
+.btn{padding:8px 16px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:13px;font-weight:500;font-family:'Sora',sans-serif;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#143d5a}
+.btn-green{background:var(--accent2);color:#fff}.btn-green:hover{background:#236040}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--surface2)}
+.btn-danger{background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be}.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}.btn-xs{padding:3px 8px;font-size:11px}
+.search{padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none;width:220px}
+.search:focus{border-color:var(--accent)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:1rem}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius);padding:1.75rem;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:1.25rem;color:var(--accent)}
+.mrow{margin-bottom:1rem}
+.mrow label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px}
+.mrow input,.mrow select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:var(--bg);outline:none}
+.mrow input:focus,.mrow select:focus{border-color:var(--accent)}
+.mactions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hist-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.hist-item:last-child{border-bottom:none}
+.hdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.hdot.in{background:var(--accent2)}.hdot.out{background:var(--danger)}.hdot.sale{background:var(--info)}
+.hinfo{flex:1}.hprod{font-size:13px;font-weight:500}.hdesc{font-size:12px;color:var(--text3)}
+.hqty{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap}
+.hqty.in{color:var(--accent2)}.hqty.out{color:var(--danger)}.hqty.sale{color:var(--info)}
+.htime{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.toast{position:fixed;bottom:2rem;right:2rem;background:var(--accent);color:#fff;padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:999;transform:translateY(100px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}.toast.err{background:var(--danger)}
+.empty{text-align:center;padding:3rem 1rem;color:var(--text3)}
+.empty .ico{font-size:40px;margin-bottom:10px}
+.fin-bar{height:8px;border-radius:4px;background:var(--surface2);margin-top:6px;overflow:hidden}
+.fin-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s}
+@media(max-width:768px){.main{padding:1rem}.sum-grid{grid-template-columns:repeat(2,1fr)}.sec-hd{flex-direction:column;align-items:flex-start}.two{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">🦟 Mosq<span>UI</span>teiros</div>
-  <div class="sync-badge"><div class="sync-dot"></div><span id="sync-label">Carregando...</span></div>
+
+<header class="header">
+  <div class="hbrand">
+    <div style="width:36px;height:36px;background:rgba(255,255,255,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">📊</div>
+    <div><h1>Fin<span>Stack</span></h1><small>Gestão de Estoque & Financeiro</small></div>
+  </div>
+  <div class="hright">
+    <div class="hdate" id="hdate"></div>
+    <div class="sync-pill"><div class="sync-dot"></div><span id="sync-label">Carregando...</span></div>
+  </div>
 </header>
-<div class="tabs">
-  <button class="tab active" onclick="showTab('estoque',this)">📦 Estoque</button>
-  <button class="tab" onclick="showTab('despesas',this)">💸 Despesas</button>
-  <button class="tab" onclick="showTab('historico',this)">📋 Histórico</button>
-  <button class="tab" onclick="showTab('financeiro',this)">📊 Financeiro</button>
+
+<nav class="tabs">
+  <div class="tab active" onclick="showPage('estoque',this)">📦 Estoque</div>
+  <div class="tab" onclick="showPage('historico',this)">📋 Histórico</div>
+  <div class="tab" onclick="showPage('financeiro',this)">📊 Financeiro</div>
+  <div class="tab" onclick="showPage('telegram',this)">📱 Telegram</div>
+</nav>
+
+<div class="main">
+
+<!-- ═══ ESTOQUE ═══════════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-estoque">
+  <div class="sum-grid" id="sum-grid"></div>
+  <div class="sec-hd">
+    <span class="sec-title">Produtos em Estoque</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input class="search" type="text" placeholder="🔍 Buscar produto..." id="search-inp" oninput="filterTable()">
+      <button class="btn btn-green" onclick="openEntrada()">📥 Entrada</button>
+      <button class="btn btn-primary" onclick="openModalVenda()">🛒 Venda</button>
+    </div>
+  </div>
+  <div class="twrap" style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
 </div>
-<main>
-  <!-- ESTOQUE -->
-  <div id="panel-estoque" class="panel active">
-    <div class="kpi-grid" id="kpi-estoque"></div>
-    <div class="card">
-      <div class="card-header">Produtos</div>
-      <table><thead><tr><th>Produto</th><th>Custo</th><th>Venda</th><th>Margem</th><th>Estoque</th><th>Status</th></tr></thead>
-      <tbody id="tabela-estoque"></tbody></table>
-    </div>
+
+<!-- ═══ HISTÓRICO ═════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-historico">
+  <div class="sec-hd">
+    <span class="sec-title">Histórico de Movimentações</span>
+    <select id="hist-filtro" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+      <option value="todos">Todos</option>
+      <option value="entrada">Entradas</option>
+      <option value="saida">Saídas</option>
+      <option value="venda">Vendas</option>
+    </select>
   </div>
-  <!-- DESPESAS -->
-  <div id="panel-despesas" class="panel">
-    <div class="card" style="margin-bottom:24px">
-      <div class="card-header">➕ Nova Despesa</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Valor (R$)</label><input type="number" id="desp-valor" placeholder="0.00" step="0.01"></div>
-        <div class="form-group"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
-        <div class="form-group"><label>Categoria</label>
-          <select id="desp-cat"><option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option><option>Frete</option><option>Mão de obra</option><option>Outros</option></select>
-        </div>
-        <div class="form-group" style="justify-content:flex-end"><button class="btn btn-primary" onclick="addDespesa()">Registrar</button></div>
-      </div>
-    </div>
-    <div class="filter-bar">
-      <select id="filtro-mes" onchange="renderDespesas()"></select>
-      <div id="total-despesas" style="font-family:'DM Mono',monospace;color:var(--danger);font-weight:700"></div>
-    </div>
-    <div class="card"><div id="lista-despesas"></div></div>
+  <div class="twrap">
+    <div style="padding:1rem" id="hist-list"></div>
   </div>
-  <!-- HISTÓRICO -->
-  <div id="panel-historico" class="panel">
-    <div class="card">
-      <div class="card-header">Vendas Registradas</div>
-      <table><thead><tr><th>Data</th><th>Produto</th><th>Qtd</th><th>Unit.</th><th>Total</th></tr></thead>
-      <tbody id="tabela-historico"></tbody></table>
+</div>
+
+<!-- ═══ FINANCEIRO ════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-financeiro">
+  <!-- KPIs -->
+  <div class="sum-grid" id="fin-kpis"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <!-- Demonstrativo -->
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Demonstrativo do Mês</div>
+      <div style="padding:1rem" id="fin-demo"></div>
     </div>
-    <div class="card">
-      <div class="card-header">➕ Registrar Venda</div>
-      <div class="form-grid">
-        <div class="form-group"><label>Produto</label><select id="venda-produto"></select></div>
-        <div class="form-group"><label>Quantidade</label><input type="number" id="venda-qtd" placeholder="1" min="1" value="1"></div>
-        <div class="form-group" style="justify-content:flex-end"><button class="btn btn-primary" onclick="registrarVenda()">Registrar Venda</button></div>
+    <!-- Produtos mais vendidos -->
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Vendas por Produto</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Produto</th><th style="text-align:right">Qtd</th><th style="text-align:right">Receita</th><th style="text-align:right">Lucro</th></tr></thead>
+          <tbody id="fin-produtos"></tbody>
+        </table>
       </div>
     </div>
   </div>
-  <!-- FINANCEIRO -->
-  <div id="panel-financeiro" class="panel">
-    <div class="filter-bar"><select id="filtro-mes-fin" onchange="renderFinanceiro()"></select></div>
-    <div class="kpi-grid" id="kpi-fin"></div>
-    <div class="card"><div class="card-header">Demonstrativo</div><div id="demonstrativo"></div></div>
-    <div class="card" style="margin-top:20px">
-      <div class="card-header">Vendas por Produto</div>
-      <table><thead><tr><th>Produto</th><th>Qtd</th><th>Receita</th><th>Custo</th><th>Lucro</th></tr></thead>
-      <tbody id="tabela-fin-produtos"></tbody></table>
+
+  <!-- Despesas -->
+  <div class="twrap">
+    <div style="background:var(--danger-light);padding:13px 16px;border-bottom:1px solid #f0c4be;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--danger);text-transform:uppercase;letter-spacing:.6px">Controle de Despesas</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px">Gastos fixos e variáveis</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="desp-filtro" onchange="renderFinanceiro()" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none">
+          <option value="mes">Mês atual</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="todos">Tudo</option>
+        </select>
+        <button class="btn btn-sm" onclick="openModalDesp()" style="background:var(--danger);color:#fff">+ Nova Despesa</button>
+      </div>
+    </div>
+    <div style="padding:1rem">
+      <div id="desp-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem"></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:center">Ação</th></tr></thead>
+          <tbody id="desp-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
-</main>
-<div id="toast"></div>
+</div>
+
+<!-- ═══ TELEGRAM ══════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-telegram">
+  <div style="max-width:700px;margin:0 auto">
+    <div style="background:var(--accent-light);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-bottom:1.5rem;box-shadow:var(--shadow)">
+      <div style="font-weight:600;font-size:14px;color:var(--accent);margin-bottom:4px">🤖 Bot Telegram Configurado</div>
+      <div style="font-size:12px;color:var(--text2)">Bot: <strong>@estoquemsq_bot</strong> — rodando 24h no Railway</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Os dados são sincronizados automaticamente com o JSONBin a cada 30 segundos.</div>
+    </div>
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:12px 16px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Comandos do Bot</div>
+      <div style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${[
+          ['/estoque','Ver todos os produtos e quantidades'],
+          ['/produtos','Listar produtos com preços'],
+          ['/entrada [produto] [qtd]','Registrar entrada de estoque'],
+          ['/venda [produto] [qtd]','Registrar venda'],
+          ['/custo [produto] [valor]','Atualizar preço de custo'],
+          ['/preco [produto] [valor]','Atualizar preço de venda'],
+          ['/despesa [valor] [desc]','Registrar despesa'],
+          ['/despesas','Ver despesas do mês'],
+          ['/resumo','Resumo financeiro'],
+          ['/alerta','Produtos com estoque baixo'],
+        ].map(([cmd,desc])=>`<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">${cmd}</div>
+          <div style="font-size:12px;color:var(--text2)">${desc}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- MODAL ENTRADA -->
+<div class="overlay" id="ov-entrada">
+  <div class="modal" style="width:420px">
+    <h2>📥 Registrar Entrada</h2>
+    <div class="mrow"><label>Produto</label><select id="ent-produto"></select></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="ent-qtd" placeholder="0" min="1"></div>
+    <div class="mrow"><label>Observação (opcional)</label><input type="text" id="ent-obs" placeholder="Ex: Compra fornecedor X"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-entrada')">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarEntrada()">Confirmar Entrada</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VENDA -->
+<div class="overlay" id="ov-venda">
+  <div class="modal" style="width:420px">
+    <h2>🛒 Registrar Venda</h2>
+    <div class="mrow"><label>Produto</label><select id="venda-produto"></select></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="venda-qtd" placeholder="1" min="1" value="1"></div>
+    <div class="mrow"><label>Forma de Pagamento</label>
+      <select id="venda-pgto">
+        <option>PIX</option><option>Dinheiro</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Boleto</option>
+      </select>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-venda')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarVenda()">Confirmar Venda</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR PRODUTO -->
+<div class="overlay" id="ov-edit">
+  <div class="modal" style="width:420px">
+    <h2>✏️ Editar Produto</h2>
+    <input type="hidden" id="edit-id">
+    <div class="mrow"><label>Nome</label><input type="text" id="edit-nome"></div>
+    <div class="two">
+      <div class="mrow"><label>Custo Unit. (R$)</label><input type="number" id="edit-custo" step="0.01"></div>
+      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="edit-preco" step="0.01"></div>
+    </div>
+    <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DESPESA -->
+<div class="overlay" id="ov-desp">
+  <div class="modal" style="width:420px">
+    <h2>💸 Nova Despesa</h2>
+    <div class="mrow"><label>Valor (R$)</label><input type="number" id="desp-valor" step="0.01" placeholder="0,00"></div>
+    <div class="mrow"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
+    <div class="mrow"><label>Categoria</label>
+      <select id="desp-cat">
+        <option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option>
+        <option>Frete</option><option>Mão de obra</option><option>Outros</option>
+      </select>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-desp')">Cancelar</button>
+      <button class="btn btn-danger" onclick="salvarDesp()" style="background:var(--danger);color:#fff">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-const JSONBIN_KEY="$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq";
-const JSONBIN_BIN="69fbf4d9adc21f119a64af4c";
-const JSONBIN_URL=`https://api.jsonbin.io/v3/b/${JSONBIN_BIN}`;
-const HEADERS={"X-Master-Key":JSONBIN_KEY,"Content-Type":"application/json"};
-const PRODUTOS_PADRAO=[
-  {id:"MGA-001",nome:"Mosquiteiro Gigante Aberto",estoque:0,custo:0,preco:0},
-  {id:"PES-001",nome:"Peseira",estoque:0,custo:0,preco:0},
-  {id:"CAL-001",nome:"Capa de Almofada",estoque:0,custo:0,preco:0},
-  {id:"MFI-001",nome:"Mosquiteiro Filo",estoque:0,custo:0,preco:0},
-  {id:"MCP-001",nome:"Mosquiteiro Casal Padrão",estoque:0,custo:0,preco:0},
-  {id:"MGF-001",nome:"Mosquiteiro Gigante Fechado",estoque:0,custo:0,preco:0},
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const JSONBIN_KEY = "$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq";
+const JSONBIN_BIN = "69fbf4d9adc21f119a64af4c";
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN}`;
+const HEADERS = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"};
+
+const PRODUTOS_PADRAO = [
+  {id:"MGA-001", nome:"Mosquiteiro Gigante Aberto",  cod:"MGA-001", qty:0, custo:0, preco:0},
+  {id:"PES-001", nome:"Peseira",                      cod:"PES-001", qty:0, custo:0, preco:0},
+  {id:"CAL-001", nome:"Capa de Almofada",             cod:"CAL-001", qty:0, custo:0, preco:0},
+  {id:"MFI-001", nome:"Mosquiteiro Filo",             cod:"MFI-001", qty:0, custo:0, preco:0},
+  {id:"MCP-001", nome:"Mosquiteiro Casal Padrão",     cod:"MCP-001", qty:0, custo:0, preco:0},
+  {id:"MGF-001", nome:"Mosquiteiro Gigante Fechado",  cod:"MGF-001", qty:0, custo:0, preco:0},
 ];
-let dados={despesas:[],estoque:[],vendas:[]};
-let saving=false;
 
-async function lerDados(){
-  try{
-    const r=await fetch(JSONBIN_URL,{headers:{"X-Master-Key":JSONBIN_KEY}});
-    const j=await r.json();
-    dados=j.record||{despesas:[],estoque:[],vendas:[]};
-    dados.despesas=dados.despesas||[];dados.estoque=dados.estoque||[];dados.vendas=dados.vendas||[];
+let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
+let saving = false;
+
+// ── JSONBIN ───────────────────────────────────────────────────────────────────
+async function lerDados() {
+  try {
+    const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
+    const j = await r.json();
+    dados = j.record || {};
+    dados.estoque   = dados.estoque   || [];
+    dados.despesas  = dados.despesas  || [];
+    dados.vendas    = dados.vendas    || [];
+    dados.historico = dados.historico || [];
     garantirProdutos();
-    document.getElementById("sync-label").textContent="Sincronizado ✓";
-  }catch(e){document.getElementById("sync-label").textContent="Erro de sync";console.error(e)}
-}
-async function salvarDados(){
-  if(saving)return;saving=true;
-  document.getElementById("sync-label").textContent="Salvando...";
-  try{await fetch(JSONBIN_URL,{method:"PUT",headers:HEADERS,body:JSON.stringify(dados)});
-    document.getElementById("sync-label").textContent="Sincronizado ✓";
-  }catch(e){document.getElementById("sync-label").textContent="Erro ao salvar"}
-  saving=false;
-}
-function garantirProdutos(){
-  const ids=dados.estoque.map(p=>p.id);
-  for(const p of PRODUTOS_PADRAO)if(!ids.includes(p.id))dados.estoque.push({...p});
-}
-function real(v){return"R$ "+Number(v).toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".")}
-function mesAtual(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
-function fmtData(iso){const d=new Date(iso);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}
-function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2500)}
-
-function showTab(tab,el){
-  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  document.getElementById("panel-"+tab).classList.add("active");
-  el.classList.add("active");renderAll();
-}
-function popularMeses(id){
-  const sel=document.getElementById(id);
-  const meses=new Set([mesAtual()]);
-  dados.despesas.forEach(d=>meses.add(d.mes));dados.vendas.forEach(v=>meses.add(v.mes));
-  const ord=[...meses].sort().reverse();
-  const atual=sel.value||mesAtual();
-  sel.innerHTML=ord.map(m=>`<option value="${m}"${m===atual?" selected":""}>${m}</option>`).join("");
+    setSyncLabel("Sincronizado ✓");
+  } catch(e) { setSyncLabel("Erro de sync"); }
 }
 
-function renderEstoque(){
-  const tbody=document.getElementById("tabela-estoque");
-  const total=dados.estoque.reduce((s,p)=>s+p.estoque,0);
-  const zer=dados.estoque.filter(p=>p.estoque===0).length;
-  const bx=dados.estoque.filter(p=>p.estoque>0&&p.estoque<5).length;
-  document.getElementById("kpi-estoque").innerHTML=`
-    <div class="kpi"><div class="kpi-label">Total Estoque</div><div class="kpi-value ok">${total}</div></div>
-    <div class="kpi"><div class="kpi-label">Zerados</div><div class="kpi-value ${zer>0?"danger":"ok"}">${zer}</div></div>
-    <div class="kpi"><div class="kpi-label">Estoque Baixo</div><div class="kpi-value ${bx>0?"warn":"ok"}">${bx}</div></div>
-    <div class="kpi"><div class="kpi-label">Produtos</div><div class="kpi-value">${dados.estoque.length}</div></div>`;
-  tbody.innerHTML=dados.estoque.map(p=>{
-    const mg=(p.custo>0&&p.preco>0)?(((p.preco-p.custo)/p.preco)*100).toFixed(0)+"%":"-";
-    const bc=p.estoque===0?"badge-danger":p.estoque<5?"badge-warn":"badge-ok";
-    const lb=p.estoque===0?"Zerado":p.estoque<5?"Baixo":"OK";
-    return`<tr>
-      <td><strong>${p.nome}</strong><br><span style="font-size:.75rem;color:var(--muted);font-family:'DM Mono',monospace">${p.id}</span></td>
-      <td><input type="number" value="${p.custo}" step="0.01" style="width:90px;padding:4px 8px;font-size:.82rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'DM Mono',monospace" onchange="atualizarCampo('${p.id}','custo',this.value)"></td>
-      <td><input type="number" value="${p.preco}" step="0.01" style="width:90px;padding:4px 8px;font-size:.82rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'DM Mono',monospace" onchange="atualizarCampo('${p.id}','preco',this.value)"></td>
-      <td style="font-family:'DM Mono',monospace">${mg}</td>
-      <td><div class="qty-ctrl"><button class="qty-btn" onclick="alterarEstoque('${p.id}',-1)">−</button><span class="qty-val">${p.estoque}</span><button class="qty-btn" onclick="alterarEstoque('${p.id}',1)">+</button></div></td>
-      <td><span class="badge ${bc}">${lb}</span></td>
+async function salvarDados() {
+  if(saving) return; saving = true;
+  setSyncLabel("Salvando...");
+  try {
+    await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
+    setSyncLabel("Sincronizado ✓");
+  } catch(e) { setSyncLabel("Erro ao salvar"); }
+  saving = false;
+}
+
+function garantirProdutos() {
+  const ids = dados.estoque.map(p=>p.id);
+  for(const p of PRODUTOS_PADRAO) if(!ids.includes(p.id)) dados.estoque.push({...p});
+}
+
+function setSyncLabel(t) { document.getElementById("sync-label").textContent = t; }
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+const R = v => "R$ " + Number(v||0).toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".");
+const mesAtual = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+const fmtData = iso => { const d=new Date(iso); return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
+
+function toast(msg, err=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.className = "toast show" + (err?" err":"");
+  setTimeout(()=>t.className="toast", 2800);
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showPage(p, el) {
+  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.getElementById("page-"+p).classList.add("active");
+  el.classList.add("active");
+  renderAll();
+}
+
+// ── MODAIS ────────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+function openEntrada() {
+  const sel = document.getElementById("ent-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  document.getElementById("ent-qtd").value = "";
+  document.getElementById("ent-obs").value = "";
+  openModal("ov-entrada");
+}
+
+function confirmarEntrada() {
+  const id  = document.getElementById("ent-produto").value;
+  const qtd = parseInt(document.getElementById("ent-qtd").value);
+  const obs = document.getElementById("ent-obs").value;
+  if(!qtd || qtd < 1) { toast("Informe a quantidade!", true); return; }
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p) return;
+  p.qty += qtd;
+  dados.historico.unshift({tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()});
+  salvarDados(); renderAll(); closeModal("ov-entrada");
+  toast(`✅ +${qtd} unidades de ${p.nome}`);
+}
+
+function openModalVenda() {
+  const sel = document.getElementById("venda-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome} (${p.qty} un)</option>`).join("");
+  document.getElementById("venda-qtd").value = 1;
+  openModal("ov-venda");
+}
+
+function confirmarVenda() {
+  const id  = document.getElementById("venda-produto").value;
+  const qtd = parseInt(document.getElementById("venda-qtd").value);
+  const pgto = document.getElementById("venda-pgto").value;
+  if(!qtd || qtd < 1) { toast("Informe a quantidade!", true); return; }
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p) return;
+  if(p.qty < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
+  p.qty -= qtd;
+  const total = p.preco * qtd;
+  dados.vendas.push({produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
+  dados.historico.unshift({tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
+  salvarDados(); renderAll(); closeModal("ov-venda");
+  toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
+}
+
+function openEdit(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("edit-id").value = id;
+  document.getElementById("edit-nome").value = p.nome;
+  document.getElementById("edit-custo").value = p.custo;
+  document.getElementById("edit-preco").value = p.preco;
+  calcEditMargem();
+  openModal("ov-edit");
+}
+function calcEditMargem() {
+  const c = parseFloat(document.getElementById("edit-custo").value)||0;
+  const v = parseFloat(document.getElementById("edit-preco").value)||0;
+  const el = document.getElementById("edit-margem-prev");
+  if(c>0 && v>0) { const m=((v-c)/v*100); el.textContent=`Margem: ${m.toFixed(1)}% | Lucro unit.: ${R(v-c)}`; el.style.color=m>30?"var(--accent2)":m>15?"var(--warn)":"var(--danger)"; }
+  else el.textContent="";
+}
+function salvarEdicao() {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.nome  = document.getElementById("edit-nome").value;
+  p.custo = parseFloat(document.getElementById("edit-custo").value)||0;
+  p.preco = parseFloat(document.getElementById("edit-preco").value)||0;
+  salvarDados(); renderAll(); closeModal("ov-edit");
+  toast("✅ Produto atualizado!");
+}
+
+function openModalDesp() { 
+  document.getElementById("desp-valor").value="";
+  document.getElementById("desp-desc").value="";
+  openModal("ov-desp"); 
+}
+function salvarDesp() {
+  const valor = parseFloat(document.getElementById("desp-valor").value);
+  const desc  = document.getElementById("desp-desc").value.trim();
+  const cat   = document.getElementById("desp-cat").value;
+  if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
+  dados.despesas.unshift({id:Date.now(), valor, desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()});
+  salvarDados(); renderFinanceiro(); closeModal("ov-desp");
+  toast("✅ Despesa registrada!");
+}
+function removerDesp(id) {
+  dados.despesas = dados.despesas.filter(d=>d.id!==id);
+  salvarDados(); renderFinanceiro();
+  toast("🗑 Despesa removida");
+}
+
+// ── RENDER ESTOQUE ────────────────────────────────────────────────────────────
+function renderEstoque() {
+  const q   = (document.getElementById("search-inp").value||"").toLowerCase();
+  const prods = dados.estoque.filter(p=>!q||p.nome.toLowerCase().includes(q)||p.cod.toLowerCase().includes(q));
+  const total = dados.estoque.reduce((s,p)=>s+p.qty,0);
+  const zer   = dados.estoque.filter(p=>p.qty===0).length;
+  const bx    = dados.estoque.filter(p=>p.qty>0&&p.qty<5).length;
+  const valTotal = dados.estoque.reduce((s,p)=>s+(p.custo*p.qty),0);
+
+  document.getElementById("sum-grid").innerHTML = `
+    <div class="sum-card"><div class="lbl">Total Unidades</div><div class="val">${total}</div><div class="sub">${dados.estoque.length} produtos</div></div>
+    <div class="sum-card ${zer>0?'danger':'ok'}"><div class="lbl">Zerados</div><div class="val">${zer}</div><div class="sub">produtos sem estoque</div></div>
+    <div class="sum-card ${bx>0?'warn':'ok'}"><div class="lbl">Estoque Baixo</div><div class="val">${bx}</div><div class="sub">abaixo de 5 unidades</div></div>
+    <div class="sum-card"><div class="lbl">Valor em Estoque</div><div class="val" style="font-size:16px">${R(valTotal)}</div><div class="sub">ao custo</div></div>
+  `;
+
+  document.getElementById("tbody").innerHTML = prods.length ? prods.map(p=>{
+    const mg = (p.custo>0&&p.preco>0) ? ((p.preco-p.custo)/p.preco*100) : null;
+    const badge = p.qty===0?"badge-danger":p.qty<5?"badge-warn":"badge-ok";
+    const label = p.qty===0?"Zerado":p.qty<5?"Baixo":"OK";
+    return `<tr>
+      <td><strong>${p.nome}</strong></td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)">${p.cod}</td>
+      <td>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="altQty('${p.id}',-1)">−</button>
+          <span class="qty-disp">${p.qty}</span>
+          <button class="qty-btn" onclick="altQty('${p.id}',1)">+</button>
+        </div>
+      </td>
+      <td style="font-family:'JetBrains Mono',monospace">${R(p.custo)}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${R(p.preco)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;color:${mg===null?'var(--text3)':mg>=30?'var(--accent2)':mg>=15?'var(--warn)':'var(--danger)'}">${mg!==null?mg.toFixed(1)+"%":"—"}</td>
+      <td><span class="badge ${badge}">${label}</span></td>
+      <td><button class="btn btn-outline btn-xs" onclick="openEdit('${p.id}')">✏️ Editar</button></td>
     </tr>`;
-  }).join("");
-}
-function atualizarCampo(id,campo,valor){
-  const p=dados.estoque.find(x=>x.id===id);
-  if(p){p[campo]=parseFloat(valor)||0;salvarDados();renderEstoque();}
-}
-function alterarEstoque(id,delta){
-  const p=dados.estoque.find(x=>x.id===id);
-  if(!p||p.estoque+delta<0)return;
-  p.estoque+=delta;salvarDados();renderEstoque();
+  }).join("") : `<tr><td colspan="8"><div class="empty"><div class="ico">🔍</div>Nenhum produto encontrado</div></td></tr>`;
 }
 
-function renderDespesas(){
-  popularMeses("filtro-mes");
-  const mes=document.getElementById("filtro-mes").value||mesAtual();
-  const lista=dados.despesas.filter(d=>d.mes===mes);
-  const total=lista.reduce((s,d)=>s+d.valor,0);
-  document.getElementById("total-despesas").textContent="Total: "+real(total);
-  const div=document.getElementById("lista-despesas");
-  if(!lista.length){div.innerHTML='<div class="empty">Nenhuma despesa neste mês</div>';return}
-  div.innerHTML=lista.map(d=>{
-    const idx=dados.despesas.indexOf(d);
-    return`<div class="desp-item">
-      <div><div class="desp-nome">${d.descricao}</div><div class="desp-data">${d.categoria||""} · ${fmtData(d.data)}</div></div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <span class="desp-valor">${real(d.valor)}</span>
-        <button class="btn btn-danger btn-sm" onclick="removeDespesa(${idx})">×</button>
+function altQty(id, delta) {
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p || p.qty+delta<0) return;
+  p.qty += delta;
+  const tipo = delta>0?"entrada":"saida";
+  dados.historico.unshift({tipo, produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), data:new Date().toISOString(), mes:mesAtual()});
+  salvarDados(); renderEstoque();
+}
+function filterTable() { renderEstoque(); }
+
+// ── RENDER HISTÓRICO ──────────────────────────────────────────────────────────
+function renderHistorico() {
+  const filtro = document.getElementById("hist-filtro").value;
+  let hist = [...dados.historico];
+  if(filtro!=="todos") hist = hist.filter(h=>h.tipo===filtro);
+  const el = document.getElementById("hist-list");
+  if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação</div>'; return; }
+  el.innerHTML = hist.slice(0,100).map(h=>{
+    const cls = h.tipo==="entrada"?"in":h.tipo==="venda"?"sale":"out";
+    const icon = h.tipo==="entrada"?"📥":h.tipo==="venda"?"🛒":"📤";
+    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total)})`: `−${h.qtd} un`;
+    return `<div class="hist-item">
+      <div class="hdot ${cls}"></div>
+      <div class="hinfo">
+        <div class="hprod">${icon} ${h.produto_nome}</div>
+        <div class="hdesc">${h.tipo.charAt(0).toUpperCase()+h.tipo.slice(1)}${h.obs?" — "+h.obs:""}${h.pgto?" — "+h.pgto:""}</div>
       </div>
+      <div class="hqty ${cls}">${label}</div>
+      <div class="htime">${fmtData(h.data)}</div>
     </div>`;
   }).join("");
 }
-function addDespesa(){
-  const valor=parseFloat(document.getElementById("desp-valor").value);
-  const desc=document.getElementById("desp-desc").value.trim();
-  const cat=document.getElementById("desp-cat").value;
-  if(!valor||!desc){toast("Preencha valor e descrição!");return}
-  dados.despesas.push({valor,descricao:desc,categoria:cat,data:new Date().toISOString(),mes:mesAtual()});
-  salvarDados();
-  document.getElementById("desp-valor").value="";document.getElementById("desp-desc").value="";
-  renderDespesas();toast("✅ Despesa registrada!");
-}
-function removeDespesa(idx){dados.despesas.splice(idx,1);salvarDados();renderDespesas();toast("🗑 Despesa removida")}
 
-function renderHistorico(){
-  const sel=document.getElementById("venda-produto");
-  sel.innerHTML=dados.estoque.map(p=>`<option value="${p.id}">${p.nome} (${p.estoque} un)</option>`).join("");
-  const tbody=document.getElementById("tabela-historico");
-  if(!dados.vendas.length){tbody.innerHTML='<tr><td colspan="5" class="empty">Nenhuma venda</td></tr>';return}
-  tbody.innerHTML=[...dados.vendas].reverse().map(v=>`<tr>
-    <td style="font-family:'DM Mono',monospace;font-size:.8rem">${fmtData(v.data)}</td>
-    <td>${v.produto_nome}</td><td>${v.qtd}</td>
-    <td>${real(v.preco_unitario)}</td>
-    <td style="color:var(--accent);font-weight:700">${real(v.total)}</td>
-  </tr>`).join("");
-}
-function registrarVenda(){
-  const id=document.getElementById("venda-produto").value;
-  const qtd=parseInt(document.getElementById("venda-qtd").value);
-  const p=dados.estoque.find(x=>x.id===id);
-  if(!p||!qtd||qtd<1){toast("Dados inválidos");return}
-  if(p.estoque<qtd){toast("⚠️ Estoque insuficiente!");return}
-  p.estoque-=qtd;
-  dados.vendas.push({produto_id:p.id,produto_nome:p.nome,qtd,preco_unitario:p.preco,total:p.preco*qtd,data:new Date().toISOString(),mes:mesAtual()});
-  salvarDados();renderAll();toast("✅ Venda registrada!");
-}
+// ── RENDER FINANCEIRO ─────────────────────────────────────────────────────────
+function renderFinanceiro() {
+  const mes = mesAtual();
+  const vendas   = dados.vendas.filter(v=>v.mes===mes);
+  const filtro   = document.getElementById("desp-filtro")?.value || "mes";
+  let despesas;
+  if(filtro==="mes") despesas = dados.despesas.filter(d=>d.mes===mes);
+  else if(filtro==="30") { const d30=new Date(); d30.setDate(d30.getDate()-30); despesas=dados.despesas.filter(d=>new Date(d.data)>=d30); }
+  else despesas = dados.despesas;
 
-function renderFinanceiro(){
-  popularMeses("filtro-mes-fin");
-  const mes=document.getElementById("filtro-mes-fin").value||mesAtual();
-  const vendas=dados.vendas.filter(v=>v.mes===mes);
-  const despesas=dados.despesas.filter(d=>d.mes===mes);
-  const receita=vendas.reduce((s,v)=>s+v.total,0);
-  const desp_tot=despesas.reduce((s,d)=>s+d.valor,0);
-  let custo_prod=0;
-  for(const v of vendas){const p=dados.estoque.find(x=>x.id===v.produto_id);if(p)custo_prod+=p.custo*v.qtd}
-  const lucro=receita-desp_tot-custo_prod;
-  const margem=receita>0?((lucro/receita)*100).toFixed(1):0;
-  document.getElementById("kpi-fin").innerHTML=`
-    <div class="kpi"><div class="kpi-label">Receita</div><div class="kpi-value ok">${real(receita)}</div></div>
-    <div class="kpi"><div class="kpi-label">Despesas</div><div class="kpi-value danger">${real(desp_tot)}</div></div>
-    <div class="kpi"><div class="kpi-label">Lucro Líquido</div><div class="kpi-value ${lucro>=0?"ok":"danger"}">${real(lucro)}</div></div>
-    <div class="kpi"><div class="kpi-label">Margem</div><div class="kpi-value ${margem>=30?"ok":margem>=15?"warn":"danger"}">${margem}%</div></div>`;
-  document.getElementById("demonstrativo").innerHTML=`
-    <div class="fin-row"><span class="fin-label">💰 Receita bruta</span><span class="fin-val" style="color:var(--accent)">${real(receita)}</span></div>
-    <div class="fin-row"><span class="fin-label">🏷 Custo dos produtos</span><span class="fin-val" style="color:var(--warn)">- ${real(custo_prod)}</span></div>
-    <div class="fin-row"><span class="fin-label">💸 Despesas operacionais</span><span class="fin-val" style="color:var(--danger)">- ${real(desp_tot)}</span></div>
-    <div class="fin-row total"><span class="fin-label">✅ Lucro Líquido</span><span class="fin-val">${real(lucro)}</span></div>`;
-  const porProd={};
-  for(const v of vendas){
-    if(!porProd[v.produto_id])porProd[v.produto_id]={nome:v.produto_nome,qtd:0,receita:0,custo:0};
+  const receita    = vendas.reduce((s,v)=>s+v.total,0);
+  const despTot    = despesas.reduce((s,d)=>s+d.valor,0);
+  let custoProd    = 0;
+  for(const v of vendas) { const p=dados.estoque.find(x=>x.id===v.produto_id); if(p) custoProd+=p.custo*v.qtd; }
+  const lucro      = receita - despTot - custoProd;
+  const margem     = receita>0?(lucro/receita*100):0;
+
+  document.getElementById("fin-kpis").innerHTML = `
+    <div class="sum-card ok"><div class="lbl">Receita</div><div class="val" style="font-size:16px">${R(receita)}</div><div class="sub">mês atual</div></div>
+    <div class="sum-card danger"><div class="lbl">Despesas</div><div class="val" style="font-size:16px">${R(despTot)}</div><div class="sub">operacionais</div></div>
+    <div class="sum-card"><div class="lbl">Custo Produtos</div><div class="val" style="font-size:16px">${R(custoProd)}</div><div class="sub">CMV</div></div>
+    <div class="sum-card ${lucro>=0?'ok':'danger'}"><div class="lbl">Lucro Líquido</div><div class="val" style="font-size:16px">${R(lucro)}</div><div class="sub">Margem: ${margem.toFixed(1)}%</div></div>
+  `;
+
+  document.getElementById("fin-demo").innerHTML = `
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💰 Receita bruta</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(receita)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷 Custo dos produtos</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(custoProd)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💸 Despesas operacionais</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(despTot)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucro>=0?'var(--accent2)':'var(--danger)'}">${R(lucro)}</strong></div>
+  `;
+
+  // Por produto
+  const porProd = {};
+  for(const v of vendas) {
+    if(!porProd[v.produto_id]) porProd[v.produto_id]={nome:v.produto_nome,qtd:0,receita:0,custo:0};
     const p=dados.estoque.find(x=>x.id===v.produto_id);
     porProd[v.produto_id].qtd+=v.qtd;
     porProd[v.produto_id].receita+=v.total;
     porProd[v.produto_id].custo+=(p?p.custo:0)*v.qtd;
   }
-  const itens=Object.values(porProd);
-  const tbody=document.getElementById("tabela-fin-produtos");
-  if(!itens.length){tbody.innerHTML='<tr><td colspan="5" class="empty">Nenhuma venda neste mês</td></tr>';return}
-  tbody.innerHTML=itens.map(x=>{
-    const lp=x.receita-x.custo;
-    return`<tr><td>${x.nome}</td><td>${x.qtd}</td><td style="color:var(--accent)">${real(x.receita)}</td><td style="color:var(--warn)">${real(x.custo)}</td><td style="color:${lp>=0?"var(--accent)":"var(--danger)"};font-weight:700">${real(lp)}</td></tr>`;
-  }).join("");
+  const itens = Object.values(porProd).sort((a,b)=>b.receita-a.receita);
+  document.getElementById("fin-produtos").innerHTML = itens.length
+    ? itens.map(x=>`<tr>
+        <td>${x.nome}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace">${x.qtd}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(x.receita)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.receita-x.custo>=0?'var(--accent2)':'var(--danger)'}">${R(x.receita-x.custo)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" class="empty">Nenhuma venda este mês</td></tr>`;
+
+  // Categorias despesas
+  const cats = {};
+  despesas.forEach(d=>{ if(!cats[d.categoria]) cats[d.categoria]=0; cats[d.categoria]+=d.valor; });
+  document.getElementById("desp-cats").innerHTML = Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+    <div style="background:var(--danger-light);border:1px solid #f0c4be;border-radius:var(--radius-sm);padding:10px 12px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:3px">${k}</div>
+      <div style="font-size:14px;font-weight:700;color:var(--danger);font-family:'JetBrains Mono',monospace">${R(v)}</div>
+    </div>`).join("");
+
+  // Tabela despesas
+  document.getElementById("desp-tbody").innerHTML = despesas.length
+    ? despesas.map(d=>`<tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
+        <td>${d.desc}</td>
+        <td><span class="badge badge-warn">${d.categoria}</span></td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(d.valor)}</td>
+        <td style="text-align:center"><button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button></td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">Nenhuma despesa</td></tr>`;
 }
 
-function renderAll(){renderEstoque();renderDespesas();renderHistorico();renderFinanceiro()}
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function renderAll() { renderEstoque(); renderHistorico(); renderFinanceiro(); }
 
-async function init(){
-  await lerDados();renderAll();
-  setInterval(async()=>{await lerDados();renderAll()},30000);
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const d = new Date();
+  document.getElementById("hdate").textContent = d.toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.getElementById("edit-custo").addEventListener("input", calcEditMargem);
+document.getElementById("edit-preco").addEventListener("input", calcEditMargem);
+
+async function init() {
+  await lerDados();
+  renderAll();
+  setInterval(async()=>{ await lerDados(); renderAll(); }, 30000);
 }
 init();
 </script>
