@@ -294,6 +294,35 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   </div>
 </div>
 
+<!-- MODAL COR RAPIDA -->
+<div class="overlay" id="ov-cor-rapida">
+  <div class="modal" style="width:340px">
+    <h2 id="cor-rapida-titulo">🎨 Ajustar Cor</h2>
+    <input type="hidden" id="cr-prod-id">
+    <input type="hidden" id="cr-cor-idx">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;background:var(--surface2);border-radius:var(--radius);padding:14px">
+      <div id="cr-cor-dot" style="width:32px;height:32px;border-radius:50%;border:2px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+      <div>
+        <div id="cr-cor-nome" style="font-weight:600;font-size:14px"></div>
+        <div id="cr-cor-qty-info" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+      </div>
+    </div>
+    <div class="mrow">
+      <label>Quantidade a adicionar ou remover</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="qty-btn" onclick="ajustarCorQtyModal(-1)" style="width:36px;height:36px;font-size:18px">−</button>
+        <input type="number" id="cr-quantidade" value="1" min="1" style="text-align:center;font-size:16px;font-weight:700">
+        <button class="qty-btn" onclick="ajustarCorQtyModal(1)" style="width:36px;height:36px;font-size:18px">+</button>
+      </div>
+    </div>
+    <div class="mactions" style="gap:8px">
+      <button class="btn btn-outline" onclick="closeModal('ov-cor-rapida')">Cancelar</button>
+      <button class="btn btn-danger btn-sm" onclick="confirmarCorRapida('remover')">− Remover</button>
+      <button class="btn btn-green" onclick="confirmarCorRapida('adicionar')">+ Adicionar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL VENDA RAPIDA -->
 <div class="overlay" id="ov-venda-rapida">
   <div class="modal" style="width:420px">
@@ -614,11 +643,11 @@ function renderEstoque() {
         <div>
           <strong>${p.nome}</strong>
           ${p.cores && p.cores.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.cores.map((c,i)=>`
-            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px 2px 4px">
+            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px 2px 4px;cursor:pointer" onclick="openCorRapida('${p.id}',${i})" title="Clique para ajustar estoque de ${c.nome}">
               <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block;flex-shrink:0"></span>
               <span style="font-size:11px;font-weight:500">${c.nome}</span>
               <span style="font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:700;color:${c.qty===0?'var(--danger)':c.qty<3?'var(--warn)':'var(--accent2)'}">${c.qty}</span>
-              <button onclick="vendaCorRapida('${p.id}',${i})" style="width:16px;height:16px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0" title="Vender 1 unidade ${c.nome}">−</button>
+              <button onclick="event.stopPropagation();vendaCorRapida('${p.id}',${i})" style="width:16px;height:16px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0" title="Vender 1 ${c.nome}">−</button>
             </div>`).join('') + '</div>' : ''}
         </div>
       </td>
@@ -787,6 +816,56 @@ function openVendaRapida(id) {
   }
   atualizarPreviewVenda();
   openModal("ov-venda-rapida");
+}
+
+function openCorRapida(prodId, corIdx) {
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+  document.getElementById("cr-prod-id").value = prodId;
+  document.getElementById("cr-cor-idx").value = corIdx;
+  document.getElementById("cr-cor-dot").style.background = cor.hex;
+  document.getElementById("cr-cor-nome").textContent = cor.nome;
+  document.getElementById("cr-cor-qty-info").textContent = "Estoque atual: " + cor.qty + " unidades";
+  document.getElementById("cor-rapida-titulo").textContent = "🎨 " + cor.nome;
+  document.getElementById("cr-quantidade").value = 1;
+  openModal("ov-cor-rapida");
+}
+
+function ajustarCorQtyModal(delta) {
+  const inp = document.getElementById("cr-quantidade");
+  const val = parseInt(inp.value)||1;
+  if(val + delta >= 1) inp.value = val + delta;
+}
+
+function confirmarCorRapida(tipo) {
+  const prodId = document.getElementById("cr-prod-id").value;
+  const corIdx = parseInt(document.getElementById("cr-cor-idx").value);
+  const qtd    = parseInt(document.getElementById("cr-quantidade").value)||1;
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+
+  if(tipo === "remover") {
+    if(cor.qty < qtd) { toast("Estoque insuficiente! Disponivel: " + cor.qty, true); return; }
+    cor.qty -= qtd;
+    // Registra como venda
+    dados.vendas.push({produto_id:p.id, produto_nome:p.nome + " (" + cor.nome + ")",
+      qtd, preco_unitario:p.preco, total:p.preco*qtd, pgto:"Nao informado",
+      data:new Date().toISOString(), mes:mesAtual()});
+    dados.historico.unshift({tipo:"venda", produto_id:p.id,
+      produto_nome:p.nome + " (" + cor.nome + ")", qtd, total:p.preco*qtd,
+      data:new Date().toISOString(), mes:mesAtual()});
+    toast("🛒 -" + qtd + " " + cor.nome);
+  } else {
+    cor.qty += qtd;
+    dados.historico.unshift({tipo:"entrada", produto_id:p.id,
+      produto_nome:p.nome + " (" + cor.nome + ")", qtd,
+      data:new Date().toISOString(), mes:mesAtual()});
+    toast("📥 +" + qtd + " " + cor.nome);
+  }
+
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  p.estoque = p.qty;
+  salvarDados(); renderAll(); closeModal("ov-cor-rapida");
 }
 
 function vendaCorRapida(prodId, corIdx) {
