@@ -613,7 +613,13 @@ function renderEstoque() {
         ${p.foto ? `<img src="${p.foto}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer" onclick="openImagem('${p.id}')">` : ''}
         <div>
           <strong>${p.nome}</strong>
-          ${p.cores && p.cores.length ? '<div style="display:flex;gap:4px;margin-top:4px">' + p.cores.map(c=>`<span title="${c.nome}: ${c.qty} un" style="width:12px;height:12px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block"></span>`).join('') + '</div>' : ''}
+          ${p.cores && p.cores.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.cores.map((c,i)=>`
+            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px 2px 4px">
+              <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block;flex-shrink:0"></span>
+              <span style="font-size:11px;font-weight:500">${c.nome}</span>
+              <span style="font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:700;color:${c.qty===0?'var(--danger)':c.qty<3?'var(--warn)':'var(--accent2)'}">${c.qty}</span>
+              <button onclick="vendaCorRapida('${p.id}',${i})" style="width:16px;height:16px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0" title="Vender 1 unidade ${c.nome}">−</button>
+            </div>`).join('') + '</div>' : ''}
         </div>
       </td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)">${p.cod}</td>
@@ -781,6 +787,24 @@ function openVendaRapida(id) {
   }
   atualizarPreviewVenda();
   openModal("ov-venda-rapida");
+}
+
+function vendaCorRapida(prodId, corIdx) {
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+  if(!cor || cor.qty <= 0) { toast("Estoque zerado para " + cor.nome + "!", true); return; }
+  cor.qty -= 1;
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  p.estoque = p.qty;
+  const receita = p.preco * 1;
+  dados.vendas.push({produto_id:p.id, produto_nome:p.nome + " (" + cor.nome + ")",
+    qtd:1, preco_unitario:p.preco, total:receita, pgto:"Não informado",
+    data:new Date().toISOString(), mes:mesAtual()});
+  dados.historico.unshift({tipo:"venda", produto_id:p.id,
+    produto_nome:p.nome + " (" + cor.nome + ")", qtd:1, total:receita,
+    data:new Date().toISOString(), mes:mesAtual()});
+  salvarDados(); renderEstoque();
+  toast("🛒 -1 " + cor.nome + " de " + p.nome);
 }
 
 function atualizarPreviewVenda() {
