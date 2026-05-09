@@ -367,6 +367,52 @@ def handle(chat_id, text):
         removidas = antes - len(dados["despesas"])
         send(chat_id, "*{} despesa(s) apagada(s)* do mes {}.".format(removidas, mes))
 
+    elif cmd == "/vendas":
+        dados = ler_dados()
+        mes = mes_atual()
+        vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
+        if not vendas_mes:
+            send(chat_id, "Nenhuma venda registrada este mes.")
+            return
+        total = sum(v.get("total", 0) for v in vendas_mes)
+        linhas = ["*Vendas de {}*\n".format(mes)]
+        for i, v in enumerate(vendas_mes, 1):
+            linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome", "-"), v.get("qtd", 1), real(v.get("total", 0))))
+        linhas.append("\n*Total: {}*".format(real(total)))
+        linhas.append("\nUse /remover venda [numero] para remover")
+        send(chat_id, "\n".join(linhas))
+
+    elif cmd == "/remover":
+        if len(args) < 2:
+            send(chat_id, "Uso: /remover venda [numero]\nEx: /remover venda 2\n\nUse /vendas para ver a lista.")
+            return
+        if args[0].lower() != "venda":
+            send(chat_id, "Uso: /remover venda [numero]")
+            return
+        try:
+            num = int(args[1])
+        except ValueError:
+            send(chat_id, "Numero invalido.")
+            return
+        dados = ler_dados()
+        dados = garantir_produtos(dados)
+        mes = mes_atual()
+        vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
+        if num < 1 or num > len(vendas_mes):
+            send(chat_id, "Numero invalido. Use /vendas para ver a lista.")
+            return
+        venda_alvo = vendas_mes[num - 1]
+        prod = next((p for p in dados["estoque"] if p["id"] == venda_alvo.get("produto_id")), None)
+        if prod:
+            prod["qty"] = prod.get("qty", prod.get("estoque", 0)) + venda_alvo.get("qtd", 1)
+            prod["estoque"] = prod["qty"]
+        dados["vendas"].remove(venda_alvo)
+        salvar_dados(dados)
+        send(chat_id, "*Venda removida!*\n{} x{} - {}\nEstoque devolvido.".format(
+            venda_alvo.get("produto_nome", "-"),
+            venda_alvo.get("qtd", 1),
+            real(venda_alvo.get("total", 0))))
+
 def main():
     print("FinStack Bot iniciando (requests puro)...")
     send(CHAT_ID, "*FinStack Bot Online!*\nBot iniciado com sucesso no Railway.\nMande /start para ver os comandos.")
