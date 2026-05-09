@@ -105,7 +105,8 @@ def handle(chat_id, text):
             "/resumo - Resumo financeiro\n"
             "/alerta - Produtos com estoque baixo\n"
             "/apagar [numero] - Apagar despesa\n"
-            "/limpar - Apagar todas as despesas do mes"
+            "/limpar - Apagar despesas do mes\n"
+            "/ajustar [receita|despesas] [valor|zerar] - Ajustar financeiro"
         )
 
     elif cmd == "/estoque":
@@ -314,6 +315,48 @@ def handle(chat_id, text):
         salvar_dados(dados)
         desc = despesa_alvo.get("desc") or despesa_alvo.get("descricao") or "-"
         send(chat_id, "*Apagado:* {}: {}".format(desc, real(despesa_alvo.get("valor", 0))))
+
+    elif cmd == "/ajustar":
+        # /ajustar receita 0  ou  /ajustar receita -500
+        if len(args) < 2:
+            send(chat_id, "Uso: /ajustar [receita|despesas|vendas] [valor ou zerar]\nExemplos:\n/ajustar receita zerar\n/ajustar receita -500\n/ajustar vendas zerar")
+            return
+        tipo = args[0].lower()
+        valor = args[1].lower()
+        dados = ler_dados()
+        mes = mes_atual()
+        if tipo == "receita" or tipo == "vendas":
+            if valor == "zerar":
+                antes = len(dados["vendas"])
+                dados["vendas"] = [v for v in dados["vendas"] if v.get("mes") != mes]
+                salvar_dados(dados)
+                send(chat_id, "*Receita zerada!*\n{} venda(s) removida(s) do mes {}.".format(antes - len(dados["vendas"]), mes))
+            else:
+                try:
+                    ajuste = float(valor.replace(",", "."))
+                    dados["despesas"].insert(0, {
+                        "id": int(datetime.now().timestamp() * 1000),
+                        "valor": abs(ajuste),
+                        "desc": "Ajuste de receita",
+                        "descricao": "Ajuste de receita",
+                        "categoria": "Ajuste",
+                        "data": datetime.now().isoformat(),
+                        "mes": mes
+                    })
+                    salvar_dados(dados)
+                    send(chat_id, "*Ajuste registrado!*\nDeducao de {} na receita do mes {}.".format(real(abs(ajuste)), mes))
+                except ValueError:
+                    send(chat_id, "Valor invalido. Use numero ou 'zerar'.")
+        elif tipo == "despesas":
+            if valor == "zerar":
+                antes = len(dados["despesas"])
+                dados["despesas"] = [d for d in dados["despesas"] if d.get("mes") != mes]
+                salvar_dados(dados)
+                send(chat_id, "*Despesas zeradas!*\n{} despesa(s) removida(s) do mes {}.".format(antes - len(dados["despesas"]), mes))
+            else:
+                send(chat_id, "Para despesas use: /ajustar despesas zerar")
+        else:
+            send(chat_id, "Tipo invalido. Use: receita, vendas ou despesas")
 
     elif cmd == "/limpar":
         dados = ler_dados()
