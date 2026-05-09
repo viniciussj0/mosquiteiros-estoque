@@ -138,7 +138,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   </div>
   <div class="twrap" style="overflow-x:auto">
     <table>
-      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem</th><th>Status</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem</th><th>Status</th><th style="min-width:120px">Ações</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -290,6 +290,58 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     <div class="mactions">
       <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VENDA RAPIDA -->
+<div class="overlay" id="ov-venda-rapida">
+  <div class="modal" style="width:420px">
+    <h2>🛒 Venda Rápida</h2>
+    <input type="hidden" id="vr-produto-id">
+    <div id="vr-produto-nome" style="font-size:15px;font-weight:600;margin-bottom:16px;color:var(--accent)"></div>
+    <div id="vr-cores-section"></div>
+    <div class="mrow">
+      <label>Quantidade</label>
+      <input type="number" id="vr-qtd" value="1" min="1">
+    </div>
+    <div class="mrow">
+      <label>Forma de Pagamento</label>
+      <select id="vr-pgto">
+        <option>PIX</option><option>Dinheiro</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Boleto</option>
+      </select>
+    </div>
+    <div id="vr-preview" style="background:var(--accent-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:8px"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-venda-rapida')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarVendaRapida()">✅ Confirmar Venda</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMAGEM PRODUTO -->
+<div class="overlay" id="ov-imagem">
+  <div class="modal" style="width:420px">
+    <h2>📷 Foto do Produto</h2>
+    <input type="hidden" id="img-produto-id">
+    <div style="margin-bottom:16px;text-align:center">
+      <img id="img-preview" src="" style="max-width:100%;max-height:200px;border-radius:var(--radius);display:none;margin-bottom:12px">
+      <div id="img-placeholder" style="width:100%;height:160px;background:var(--surface2);border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px">
+        Nenhuma foto cadastrada
+      </div>
+    </div>
+    <div class="mrow">
+      <label>Selecionar Foto</label>
+      <input type="file" id="img-file" accept="image/*" onchange="previewImagem(this)" style="padding:8px;background:var(--bg)">
+    </div>
+    <div class="mrow">
+      <label>Ou cole uma URL de imagem</label>
+      <input type="text" id="img-url" placeholder="https://..." oninput="previewImagemUrl(this.value)">
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-imagem')">Cancelar</button>
+      <button class="btn btn-danger btn-sm" onclick="removerImagem()">🗑 Remover</button>
+      <button class="btn btn-primary" onclick="salvarImagem()">Salvar Foto</button>
     </div>
   </div>
 </div>
@@ -557,9 +609,12 @@ function renderEstoque() {
     const badge = p.qty===0?"badge-danger":p.qty<5?"badge-warn":"badge-ok";
     const label = p.qty===0?"Zerado":p.qty<5?"Baixo":"OK";
     return `<tr>
-      <td>
-        <strong>${p.nome}</strong>
-        ${p.cores && p.cores.length ? '<div style="display:flex;gap:4px;margin-top:4px">' + p.cores.map(c=>`<span title="${c.nome}: ${c.qty} un" style="width:12px;height:12px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block"></span>`).join('') + '</div>' : ''}
+      <td style="display:flex;align-items:center;gap:10px">
+        ${p.foto ? `<img src="${p.foto}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer" onclick="openImagem('${p.id}')">` : ''}
+        <div>
+          <strong>${p.nome}</strong>
+          ${p.cores && p.cores.length ? '<div style="display:flex;gap:4px;margin-top:4px">' + p.cores.map(c=>`<span title="${c.nome}: ${c.qty} un" style="width:12px;height:12px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block"></span>`).join('') + '</div>' : ''}
+        </div>
       </td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)">${p.cod}</td>
       <td>
@@ -573,7 +628,11 @@ function renderEstoque() {
       <td style="font-family:'JetBrains Mono',monospace">${R(p.preco)}</td>
       <td style="font-family:'JetBrains Mono',monospace;color:${mg===null?'var(--text3)':mg>=30?'var(--accent2)':mg>=15?'var(--warn)':'var(--danger)'}">${mg!==null?mg.toFixed(1)+"%":"—"}</td>
       <td><span class="badge ${badge}">${label}</span></td>
-      <td><button class="btn btn-outline btn-xs" onclick="openEdit('${p.id}')">✏️ Editar</button></td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+        ${p.foto ? `<img src="${p.foto}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openImagem('${p.id}')" title="Ver/trocar foto">` : `<button class="btn btn-outline btn-xs" onclick="openImagem('${p.id}')" title="Adicionar foto">📷</button>`}
+        <button class="btn btn-outline btn-xs" onclick="openEdit('${p.id}')">✏️</button>
+        <button class="btn btn-xs" onclick="openVendaRapida('${p.id}')" style="background:var(--accent);color:#fff">🛒</button>
+      </td>
     </tr>`;
   }).join("") : `<tr><td colspan="8"><div class="empty"><div class="ico">🔍</div>Nenhum produto encontrado</div></td></tr>`;
 }
@@ -705,6 +764,124 @@ function renderFinanceiro() {
 }
 
 // ── RENDER ALL ────────────────────────────────────────────────────────────────
+function openVendaRapida(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("vr-produto-id").value = id;
+  document.getElementById("vr-produto-nome").textContent = p.nome;
+  document.getElementById("vr-qtd").value = 1;
+  // Mostrar cores se tiver
+  const coresSection = document.getElementById("vr-cores-section");
+  if(p.cores && p.cores.length > 0) {
+    coresSection.innerHTML = `<div class="mrow"><label>Variação de Cor</label><select id="vr-cor">
+      <option value="">Sem variação específica</option>
+      ${p.cores.map((c,i)=>`<option value="${i}">${c.nome} (${c.qty} un)</option>`).join('')}
+    </select></div>`;
+  } else {
+    coresSection.innerHTML = '';
+  }
+  atualizarPreviewVenda();
+  openModal("ov-venda-rapida");
+}
+
+function atualizarPreviewVenda() {
+  const id = document.getElementById("vr-produto-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  const qtd = parseInt(document.getElementById("vr-qtd").value)||1;
+  const total = p.preco * qtd;
+  const prev = document.getElementById("vr-preview");
+  if(prev) prev.innerHTML = `<strong>Total: ${R(total)}</strong> (${qtd}x ${R(p.preco)})`;
+}
+
+document.addEventListener("input", e => {
+  if(e.target.id === "vr-qtd") atualizarPreviewVenda();
+});
+
+function confirmarVendaRapida() {
+  const id   = document.getElementById("vr-produto-id").value;
+  const qtd  = parseInt(document.getElementById("vr-qtd").value)||1;
+  const pgto = document.getElementById("vr-pgto").value;
+  const p    = dados.estoque.find(x=>x.id===id); if(!p) return;
+  
+  const corSel = document.getElementById("vr-cor");
+  const corIdx = corSel ? parseInt(corSel.value) : NaN;
+  
+  const qty_atual = p.qty;
+  if(qty_atual < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
+  
+  // Deduz da cor se selecionada
+  if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
+    if(p.cores[corIdx].qty < qtd) { toast("⚠️ Estoque dessa cor insuficiente!", true); return; }
+    p.cores[corIdx].qty -= qtd;
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  } else {
+    p.qty -= qtd;
+  }
+  p.estoque = p.qty;
+  
+  const receita = p.preco * qtd;
+  dados.vendas.push({produto_id:p.id, produto_nome:p.nome,
+    qtd, preco_unitario:p.preco, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
+  dados.historico.unshift({tipo:"venda", produto_id:p.id,
+    produto_nome:p.nome, qtd, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
+  
+  salvarDados(); renderAll(); closeModal("ov-venda-rapida");
+  toast("🛒 Venda: " + qtd + "x " + p.nome + " — " + R(receita));
+}
+
+function openImagem(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("img-produto-id").value = id;
+  document.getElementById("img-url").value = p.foto || '';
+  const preview = document.getElementById("img-preview");
+  const placeholder = document.getElementById("img-placeholder");
+  if(p.foto) {
+    preview.src = p.foto; preview.style.display = "block";
+    placeholder.style.display = "none";
+  } else {
+    preview.style.display = "none";
+    placeholder.style.display = "flex";
+  }
+  openModal("ov-imagem");
+}
+
+function previewImagem(input) {
+  if(!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById("img-preview").src = e.target.result;
+    document.getElementById("img-preview").style.display = "block";
+    document.getElementById("img-placeholder").style.display = "none";
+    document.getElementById("img-url").value = e.target.result;
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function previewImagemUrl(url) {
+  if(!url) return;
+  const preview = document.getElementById("img-preview");
+  preview.src = url; preview.style.display = "block";
+  document.getElementById("img-placeholder").style.display = "none";
+}
+
+function salvarImagem() {
+  const id  = document.getElementById("img-produto-id").value;
+  const url = document.getElementById("img-url").value || document.getElementById("img-preview").src;
+  const p   = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.foto = url;
+  salvarDados(); renderAll(); closeModal("ov-imagem");
+  toast("📷 Foto salva!");
+}
+
+function removerImagem() {
+  const id = document.getElementById("img-produto-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.foto = "";
+  salvarDados(); renderAll(); closeModal("ov-imagem");
+  toast("🗑 Foto removida");
+}
+
 function renderAll() { renderEstoque(); renderHistorico(); renderFinanceiro(); }
 
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
