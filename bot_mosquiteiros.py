@@ -106,7 +106,9 @@ def handle(chat_id, text):
             "/alerta - Produtos com estoque baixo\n"
             "/apagar [numero] - Apagar despesa\n"
             "/limpar - Apagar despesas do mes\n"
-            "/ajustar [receita|despesas] [valor|zerar] - Ajustar financeiro"
+            "/ajustar [receita|despesas] [valor|zerar] - Ajustar financeiro\n"
+            "/zerarvendas - Zerar todas as vendas do mes\n"
+            "/zerarvendas [produto] - Zerar vendas de um produto"
         )
 
     elif cmd == "/estoque":
@@ -412,6 +414,48 @@ def handle(chat_id, text):
             venda_alvo.get("produto_nome", "-"),
             venda_alvo.get("qtd", 1),
             real(venda_alvo.get("total", 0))))
+
+    elif cmd == "/zerarvendas":
+        dados = ler_dados()
+        dados = garantir_produtos(dados)
+        mes = mes_atual()
+        if not args:
+            # Zera TODAS as vendas do mes
+            vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
+            # Devolve estoque de todas
+            for v in vendas_mes:
+                prod = next((p for p in dados["estoque"] if p["id"] == v.get("produto_id")), None)
+                if prod:
+                    prod["qty"] = prod.get("qty", prod.get("estoque", 0)) + v.get("qtd", 1)
+                    prod["estoque"] = prod["qty"]
+            total_removido = sum(v.get("total", 0) for v in vendas_mes)
+            dados["vendas"] = [v for v in dados["vendas"] if v.get("mes") != mes]
+            salvar_dados(dados)
+            send(chat_id, "*Todas as vendas zeradas!*\n{} venda(s) removida(s)\nReceita removida: {}\nEstoque devolvido.".format(
+                len(vendas_mes), real(total_removido)))
+        else:
+            # Zera vendas de um produto especifico
+            termo = " ".join(args).lower()
+            vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
+            vendas_prod = [v for v in vendas_mes if termo in v.get("produto_nome", "").lower()]
+            if not vendas_prod:
+                send(chat_id, "Nenhuma venda encontrada para '{}'.\nUse /vendas para ver a lista.".format(termo))
+                return
+            qtd_total = sum(v.get("qtd", 1) for v in vendas_prod)
+            receita_total = sum(v.get("total", 0) for v in vendas_prod)
+            # Devolve estoque
+            for v in vendas_prod:
+                prod = next((p for p in dados["estoque"] if p["id"] == v.get("produto_id")), None)
+                if prod:
+                    prod["qty"] = prod.get("qty", prod.get("estoque", 0)) + v.get("qtd", 1)
+                    prod["estoque"] = prod["qty"]
+            # Remove as vendas do produto
+            for v in vendas_prod:
+                if v in dados["vendas"]:
+                    dados["vendas"].remove(v)
+            salvar_dados(dados)
+            send(chat_id, "*Vendas removidas!*\n{}\nQtd: {} unidades\nReceita removida: {}\nEstoque devolvido.".format(
+                vendas_prod[0].get("produto_nome", "-"), qtd_total, real(receita_total)))
 
 def main():
     print("FinStack Bot iniciando (requests puro)...")
