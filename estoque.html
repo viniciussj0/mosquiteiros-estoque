@@ -90,6 +90,16 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 .empty .ico{font-size:40px;margin-bottom:10px}
 .fin-bar{height:8px;border-radius:4px;background:var(--surface2);margin-top:6px;overflow:hidden}
 .fin-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s}
+.var-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.var-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
+.var-dot{width:20px;height:20px;border-radius:50%;border:2px solid rgba(0,0,0,.15);flex-shrink:0}
+.var-nome{flex:1;font-size:13px;font-weight:500}
+.var-qty{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;min-width:30px;text-align:center}
+.var-add-row{display:flex;gap:6px;align-items:center;margin-top:8px}
+.var-add-row input[type=color]{width:36px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;background:#fff;flex-shrink:0}
+.var-add-row input[type=text]{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none}
+.var-add-row input[type=text]:focus{border-color:var(--accent)}
+.var-add-row input[type=number]{width:70px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);background:#fff;outline:none}
 @media(max-width:768px){.main{padding:1rem}.sum-grid{grid-template-columns:repeat(2,1fr)}.sec-hd{flex-direction:column;align-items:flex-start}.two{grid-template-columns:1fr}}
 </style>
 </head>
@@ -255,7 +265,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 
 <!-- MODAL EDITAR PRODUTO -->
 <div class="overlay" id="ov-edit">
-  <div class="modal" style="width:420px">
+  <div class="modal" style="width:480px">
     <h2>✏️ Editar Produto</h2>
     <input type="hidden" id="edit-id">
     <div class="mrow"><label>Nome</label><input type="text" id="edit-nome"></div>
@@ -264,6 +274,19 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="edit-preco" step="0.01"></div>
     </div>
     <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
+
+    <!-- VARIAÇÕES DE COR -->
+    <div class="mrow">
+      <label>Variações de Cor</label>
+      <div class="var-add-row">
+        <input type="color" id="nova-cor-hex" value="#4a90d9" title="Escolha a cor">
+        <input type="text" id="nova-cor-nome" placeholder="Nome da cor (ex: Azul, Rosa...)">
+        <input type="number" id="nova-cor-qty" placeholder="Qtd" min="0" value="0">
+        <button class="btn btn-green btn-sm" onclick="adicionarCor()">+ Add</button>
+      </div>
+      <div class="var-list" id="var-list"></div>
+    </div>
+
     <div class="mactions">
       <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
@@ -425,7 +448,61 @@ function openEdit(id) {
   document.getElementById("edit-custo").value = p.custo;
   document.getElementById("edit-preco").value = p.preco;
   calcEditMargem();
+  renderVarList(p.cores || []);
   openModal("ov-edit");
+}
+
+function renderVarList(cores) {
+  const el = document.getElementById("var-list");
+  if(!cores.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma variação cadastrada</div>'; return; }
+  el.innerHTML = cores.map((c,i) => `
+    <div class="var-item">
+      <div class="var-dot" style="background:${c.hex}"></div>
+      <span class="var-nome">${c.nome}</span>
+      <button class="qty-btn" onclick="alterarCorQty(${i},-1)">−</button>
+      <span class="var-qty">${c.qty||0}</span>
+      <button class="qty-btn" onclick="alterarCorQty(${i},1)">+</button>
+      <button class="btn btn-danger btn-xs" onclick="removerCor(${i})">×</button>
+    </div>`).join("");
+}
+
+function getCoresEdit() {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id);
+  return p ? (p.cores || []) : [];
+}
+
+function adicionarCor() {
+  const hex  = document.getElementById("nova-cor-hex").value;
+  const nome = document.getElementById("nova-cor-nome").value.trim();
+  const qty  = parseInt(document.getElementById("nova-cor-qty").value)||0;
+  if(!nome) { toast("Informe o nome da cor!", true); return; }
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  if(!p.cores) p.cores = [];
+  p.cores.push({hex, nome, qty});
+  // Atualiza qty total do produto
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  renderVarList(p.cores);
+  document.getElementById("nova-cor-nome").value = "";
+  document.getElementById("nova-cor-qty").value = "0";
+}
+
+function alterarCorQty(idx, delta) {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p||!p.cores) return;
+  if((p.cores[idx].qty||0)+delta < 0) return;
+  p.cores[idx].qty = (p.cores[idx].qty||0) + delta;
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  renderVarList(p.cores);
+}
+
+function removerCor(idx) {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p||!p.cores) return;
+  p.cores.splice(idx,1);
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  renderVarList(p.cores);
 }
 function calcEditMargem() {
   const c = parseFloat(document.getElementById("edit-custo").value)||0;
@@ -440,6 +517,10 @@ function salvarEdicao() {
   p.nome  = document.getElementById("edit-nome").value;
   p.custo = parseFloat(document.getElementById("edit-custo").value)||0;
   p.preco = parseFloat(document.getElementById("edit-preco").value)||0;
+  // Se tem cores, qty = soma das cores
+  if(p.cores && p.cores.length > 0) {
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  }
   salvarDados(); renderAll(); closeModal("ov-edit");
   toast("✅ Produto atualizado!");
 }
@@ -485,7 +566,10 @@ function renderEstoque() {
     const badge = p.qty===0?"badge-danger":p.qty<5?"badge-warn":"badge-ok";
     const label = p.qty===0?"Zerado":p.qty<5?"Baixo":"OK";
     return `<tr>
-      <td><strong>${p.nome}</strong></td>
+      <td>
+        <strong>${p.nome}</strong>
+        ${p.cores && p.cores.length ? '<div style="display:flex;gap:4px;margin-top:4px">' + p.cores.map(c=>`<span title="${c.nome}: ${c.qty} un" style="width:12px;height:12px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block"></span>`).join('') + '</div>' : ''}
+      </td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)">${p.cod}</td>
       <td>
         <div class="qty-ctrl">
@@ -507,9 +591,24 @@ function altQty(id, delta) {
   const p = dados.estoque.find(x=>x.id===id);
   if(!p || p.qty+delta<0) return;
   p.qty += delta;
-  const tipo = delta>0?"entrada":"saida";
-  dados.historico.unshift({tipo, produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), data:new Date().toISOString(), mes:mesAtual()});
+  const tipo = delta>0?"entrada":"venda";
+  const reg = {tipo, produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), data:new Date().toISOString(), mes:mesAtual()};
+  // Se for saida (-), registra também como venda para controle financeiro
+  if(delta < 0) {
+    reg.preco_unitario = p.preco;
+    reg.total = p.preco * Math.abs(delta);
+    reg.pgto = "Não informado";
+    dados.vendas.push({
+      produto_id:p.id, produto_nome:p.nome,
+      qtd:Math.abs(delta), preco_unitario:p.preco,
+      total:p.preco*Math.abs(delta),
+      pgto:"Não informado",
+      data:new Date().toISOString(), mes:mesAtual()
+    });
+  }
+  dados.historico.unshift(reg);
   salvarDados(); renderEstoque();
+  if(delta < 0) toast(`🛒 Venda registrada: ${Math.abs(delta)}x ${p.nome}`);
 }
 function filterTable() { renderEstoque(); }
 
