@@ -1,20 +1,25 @@
 import os
-import json
 import requests
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# ─── CONFIGURAÇÕES ───────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8723853827:AAFeOqlYT6goT6bbajCWpFmVLNnN2ZjR_H0")
 CHAT_ID        = "5303204887"
+JSONBIN_KEY    = os.environ.get("JSONBIN_KEY", "$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq")
+JSONBIN_BIN    = os.environ.get("JSONBIN_BIN", "69fbf4d9adc21f119a64af4c")
+JSONBIN_URL    = "https://api.jsonbin.io/v3/b/" + JSONBIN_BIN
+HEADERS        = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
 
-JSONBIN_KEY = os.environ.get("JSONBIN_KEY", "$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq")
-JSONBIN_BIN = os.environ.get("JSONBIN_BIN", "69fbf4d9adc21f119a64af4c")
-JSONBIN_URL = f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN}"
-HEADERS     = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
+PRODUTOS_PADRAO = [
+    {"id": "MGA-001", "nome": "Mosquiteiro Gigante Aberto",  "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+    {"id": "PES-001", "nome": "Peseira",                      "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+    {"id": "CAL-001", "nome": "Capa de Almofada",             "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+    {"id": "MFI-001", "nome": "Mosquiteiro Filo",             "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+    {"id": "MCP-001", "nome": "Mosquiteiro Casal Padrao",     "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+    {"id": "MGF-001", "nome": "Mosquiteiro Gigante Fechado",  "estoque": 0, "qty": 0, "custo": 0, "preco": 0},
+]
 
-# ─── JSONBIN: LER / SALVAR ────────────────────────────────────────────────────
 def ler_dados():
     try:
         r = requests.get(JSONBIN_URL, headers=HEADERS, timeout=10)
@@ -22,32 +27,31 @@ def ler_dados():
         record.setdefault("despesas", [])
         record.setdefault("estoque", [])
         record.setdefault("vendas", [])
+        record.setdefault("historico", [])
         return record
     except Exception as e:
-        print(f"Erro ao ler JSONBin: {e}")
-        return {"despesas": [], "estoque": [], "vendas": []}
+        print("Erro ao ler JSONBin:", e)
+        return {"despesas": [], "estoque": [], "vendas": [], "historico": []}
 
 def salvar_dados(dados):
     try:
+        for p in dados.get("estoque", []):
+            p["estoque"] = p.get("qty", p.get("estoque", 0))
+            p["qty"] = p["estoque"]
         requests.put(JSONBIN_URL, json=dados, headers=HEADERS, timeout=10)
     except Exception as e:
-        print(f"Erro ao salvar JSONBin: {e}")
-
-# ─── PRODUTOS PADRÃO ─────────────────────────────────────────────────────────
-PRODUTOS_PADRAO = [
-    {"id": "MGA-001", "nome": "Mosquiteiro Gigante Aberto",  "estoque": 0, "custo": 0, "preco": 0},
-    {"id": "PES-001", "nome": "Peseira",                      "estoque": 0, "custo": 0, "preco": 0},
-    {"id": "CAL-001", "nome": "Capa de Almofada",             "estoque": 0, "custo": 0, "preco": 0},
-    {"id": "MFI-001", "nome": "Mosquiteiro Filo",             "estoque": 0, "custo": 0, "preco": 0},
-    {"id": "MCP-001", "nome": "Mosquiteiro Casal Padrão",     "estoque": 0, "custo": 0, "preco": 0},
-    {"id": "MGF-001", "nome": "Mosquiteiro Gigante Fechado",  "estoque": 0, "custo": 0, "preco": 0},
-]
+        print("Erro ao salvar JSONBin:", e)
 
 def garantir_produtos(dados):
-    ids_existentes = [p["id"] for p in dados["estoque"]]
+    ids = [p["id"] for p in dados["estoque"]]
     for p in PRODUTOS_PADRAO:
-        if p["id"] not in ids_existentes:
+        if p["id"] not in ids:
             dados["estoque"].append(dict(p))
+    for p in dados["estoque"]:
+        if "qty" not in p:
+            p["qty"] = p.get("estoque", 0)
+        if "estoque" not in p:
+            p["estoque"] = p.get("qty", 0)
     return dados
 
 def buscar_produto(dados, termo):
@@ -60,10 +64,8 @@ def buscar_produto(dados, termo):
 def mes_atual():
     return datetime.now().strftime("%Y-%m")
 
-def formatar_real(valor):
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-# ─── COMANDOS ────────────────────────────────────────────────────────────────
+def real(valor):
+    return "R$ {:,.2f}".format(valor).replace(",", "X").replace(".", ",").replace("X", ".")
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     texto = ("*FinStack Bot Online!*\n\nComandos disponiveis:\n"
@@ -83,169 +85,160 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_estoque(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados = garantir_produtos(ler_dados())
-    linhas = ["📦 *Estoque Atual*\n"]
+    linhas = ["*Estoque Atual*\n"]
     for p in dados["estoque"]:
-        emoji = "🔴" if p["estoque"] == 0 else "🟡" if p["estoque"] < 5 else "🟢"
-        linhas.append(f"{emoji} *{p['nome']}* — {p['estoque']} un")
+        qty = p.get("qty", p.get("estoque", 0))
+        emoji = "🔴" if qty == 0 else "🟡" if qty < 5 else "🟢"
+        linhas.append("{} *{}* - {} un".format(emoji, p["nome"], qty))
     await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
 
 async def cmd_produtos(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados = garantir_produtos(ler_dados())
-    linhas = ["🛍 *Produtos Cadastrados*\n"]
+    linhas = ["*Produtos Cadastrados*\n"]
     for i, p in enumerate(dados["estoque"], 1):
+        qty = p.get("qty", p.get("estoque", 0))
         margem = ""
-        if p["custo"] > 0 and p["preco"] > 0:
+        if p.get("custo", 0) > 0 and p.get("preco", 0) > 0:
             m = ((p["preco"] - p["custo"]) / p["preco"]) * 100
-            margem = f" | Margem: {m:.0f}%"
-        linhas.append(
-            f"{i}. *{p['nome']}* ({p['id']})\n"
-            f"   Custo: {formatar_real(p['custo'])} | Venda: {formatar_real(p['preco'])}{margem}\n"
-            f"   Estoque: {p['estoque']} un"
-        )
+            margem = " | Margem: {:.0f}%".format(m)
+        linhas.append("{}. *{}* ({})\n   Custo: {} | Venda: {}{}\n   Estoque: {} un".format(
+            i, p["nome"], p["id"], real(p.get("custo", 0)), real(p.get("preco", 0)), margem, qty))
     await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
 
 async def cmd_entrada(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Uso: /entrada [produto] [qtd]\nEx: /entrada casal 10")
+        await update.message.reply_text("Uso: /entrada [produto] [qtd]\nEx: /entrada casal 10")
         return
     try:
         qtd = int(args[-1])
         termo = " ".join(args[:-1])
     except ValueError:
-        await update.message.reply_text("❌ A quantidade deve ser um número inteiro.")
+        await update.message.reply_text("A quantidade deve ser um numero inteiro.")
         return
     dados = garantir_produtos(ler_dados())
     produto = buscar_produto(dados, termo)
     if not produto:
-        await update.message.reply_text(f"❌ Produto '{termo}' não encontrado.")
+        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
         return
-    produto["estoque"] += qtd
+    produto["qty"] = produto.get("qty", produto.get("estoque", 0)) + qtd
+    produto["estoque"] = produto["qty"]
+    dados["historico"].insert(0, {"tipo": "entrada", "produto_id": produto["id"],
+        "produto_nome": produto["nome"], "qtd": qtd,
+        "data": datetime.now().isoformat(), "mes": mes_atual()})
     salvar_dados(dados)
     await update.message.reply_text(
-        f"✅ *Entrada registrada!*\n{produto['nome']}: +{qtd} un\nTotal: {produto['estoque']} un",
-        parse_mode="Markdown"
-    )
+        "*Entrada registrada!*\n{}: +{} un\nTotal: {} un".format(produto["nome"], qtd, produto["qty"]),
+        parse_mode="Markdown")
 
 async def cmd_venda(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Uso: /venda [produto] [qtd]\nEx: /venda casal 3")
+        await update.message.reply_text("Uso: /venda [produto] [qtd]\nEx: /venda casal 3")
         return
     try:
         qtd = int(args[-1])
         termo = " ".join(args[:-1])
     except ValueError:
-        await update.message.reply_text("❌ A quantidade deve ser um número inteiro.")
+        await update.message.reply_text("A quantidade deve ser um numero inteiro.")
         return
     dados = garantir_produtos(ler_dados())
     produto = buscar_produto(dados, termo)
     if not produto:
-        await update.message.reply_text(f"❌ Produto '{termo}' não encontrado.")
+        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
         return
-    if produto["estoque"] < qtd:
-        await update.message.reply_text(f"⚠️ Estoque insuficiente! Disponível: {produto['estoque']} un")
+    qty_atual = produto.get("qty", produto.get("estoque", 0))
+    if qty_atual < qtd:
+        await update.message.reply_text("Estoque insuficiente! Disponivel: {} un".format(qty_atual))
         return
-    produto["estoque"] -= qtd
-    receita = produto["preco"] * qtd
-    dados["vendas"].append({
-        "produto_id": produto["id"],
-        "produto_nome": produto["nome"],
-        "qtd": qtd,
-        "preco_unitario": produto["preco"],
-        "total": receita,
-        "data": datetime.now().isoformat(),
-        "mes": mes_atual()
-    })
+    produto["qty"] = qty_atual - qtd
+    produto["estoque"] = produto["qty"]
+    receita = produto.get("preco", 0) * qtd
+    dados["vendas"].append({"produto_id": produto["id"], "produto_nome": produto["nome"],
+        "qtd": qtd, "preco_unitario": produto.get("preco", 0), "total": receita, "pgto": "Telegram",
+        "data": datetime.now().isoformat(), "mes": mes_atual()})
+    dados["historico"].insert(0, {"tipo": "venda", "produto_id": produto["id"],
+        "produto_nome": produto["nome"], "qtd": qtd, "total": receita,
+        "data": datetime.now().isoformat(), "mes": mes_atual()})
     salvar_dados(dados)
     await update.message.reply_text(
-        f"✅ *Venda registrada!*\n{produto['nome']}: -{qtd} un\n"
-        f"Receita: {formatar_real(receita)}\nEstoque restante: {produto['estoque']} un",
-        parse_mode="Markdown"
-    )
+        "*Venda registrada!*\n{}: -{} un\nReceita: {}\nRestante: {} un".format(
+            produto["nome"], qtd, real(receita), produto["qty"]), parse_mode="Markdown")
 
 async def cmd_custo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Uso: /custo [produto] [valor]\nEx: /custo casal 45.50")
+        await update.message.reply_text("Uso: /custo [produto] [valor]\nEx: /custo casal 45.50")
         return
     try:
         valor = float(args[-1].replace(",", "."))
         termo = " ".join(args[:-1])
     except ValueError:
-        await update.message.reply_text("❌ Valor inválido.")
+        await update.message.reply_text("Valor invalido.")
         return
     dados = garantir_produtos(ler_dados())
     produto = buscar_produto(dados, termo)
     if not produto:
-        await update.message.reply_text(f"❌ Produto '{termo}' não encontrado.")
+        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
         return
     produto["custo"] = valor
     salvar_dados(dados)
     await update.message.reply_text(
-        f"✅ Custo atualizado!\n*{produto['nome']}*: {formatar_real(valor)}", parse_mode="Markdown"
-    )
+        "*Custo atualizado!*\n{}: {}".format(produto["nome"], real(valor)), parse_mode="Markdown")
 
 async def cmd_preco(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Uso: /preco [produto] [valor]\nEx: /preco casal 89.90")
+        await update.message.reply_text("Uso: /preco [produto] [valor]\nEx: /preco casal 89.90")
         return
     try:
         valor = float(args[-1].replace(",", "."))
         termo = " ".join(args[:-1])
     except ValueError:
-        await update.message.reply_text("❌ Valor inválido.")
+        await update.message.reply_text("Valor invalido.")
         return
     dados = garantir_produtos(ler_dados())
     produto = buscar_produto(dados, termo)
     if not produto:
-        await update.message.reply_text(f"❌ Produto '{termo}' não encontrado.")
+        await update.message.reply_text("Produto '{}' nao encontrado.".format(termo))
         return
     produto["preco"] = valor
     salvar_dados(dados)
     await update.message.reply_text(
-        f"✅ Preço atualizado!\n*{produto['nome']}*: {formatar_real(valor)}", parse_mode="Markdown"
-    )
+        "*Preco atualizado!*\n{}: {}".format(produto["nome"], real(valor)), parse_mode="Markdown")
 
 async def cmd_despesa(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     args = ctx.args
     if len(args) < 2:
-        await update.message.reply_text("❌ Uso: /despesa [valor] [descrição]\nEx: /despesa 500 ADS Facebook")
+        await update.message.reply_text("Uso: /despesa [valor] [descricao]\nEx: /despesa 500 ADS Facebook")
         return
     try:
         valor = float(args[0].replace(",", "."))
         descricao = " ".join(args[1:])
     except ValueError:
-        await update.message.reply_text("❌ Valor inválido.")
+        await update.message.reply_text("Valor invalido.")
         return
     dados = ler_dados()
-    dados["despesas"].append({
-        "id": int(datetime.now().timestamp() * 1000),
-        "valor": valor,
-        "desc": descricao,
-        "descricao": descricao,
-        "categoria": "Outros",
-        "data": datetime.now().isoformat(),
-        "mes": mes_atual()
-    })
+    dados["despesas"].insert(0, {"id": int(datetime.now().timestamp() * 1000),
+        "valor": valor, "desc": descricao, "descricao": descricao,
+        "categoria": "Outros", "data": datetime.now().isoformat(), "mes": mes_atual()})
     salvar_dados(dados)
     await update.message.reply_text(
-        f"✅ *Despesa registrada!*\n{descricao}: {formatar_real(valor)}", parse_mode="Markdown"
-    )
+        "*Despesa registrada!*\n{}: {}".format(descricao, real(valor)), parse_mode="Markdown")
 
 async def cmd_despesas(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados = ler_dados()
     mes = mes_atual()
     despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
     if not despesas_mes:
-        await update.message.reply_text("📭 Nenhuma despesa registrada este mês.")
+        await update.message.reply_text("Nenhuma despesa registrada este mes.")
         return
-    total = sum(d["valor"] for d in despesas_mes)
-    linhas = [f"💸 *Despesas de {mes}*\n"]
+    total = sum(d.get("valor", 0) for d in despesas_mes)
+    linhas = ["*Despesas de {}*\n".format(mes)]
     for i, d in enumerate(despesas_mes, 1):
-        linhas.append(f"{i}. {d['descricao']}: {formatar_real(d['valor'])}")
-    linhas.append(f"\n*Total: {formatar_real(total)}*")
+        desc = d.get("desc") or d.get("descricao") or "-"
+        linhas.append("{}. {}: {}".format(i, desc, real(d.get("valor", 0))))
+    linhas.append("\n*Total: {}*".format(real(total)))
     await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
 
 async def cmd_resumo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -253,36 +246,31 @@ async def cmd_resumo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     mes = mes_atual()
     vendas_mes   = [v for v in dados["vendas"]   if v.get("mes") == mes]
     despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
-    receita  = sum(v["total"] for v in vendas_mes)
-    despesas = sum(d["valor"] for d in despesas_mes)
-    qtd_vend = sum(v["qtd"]   for v in vendas_mes)
+    receita      = sum(v.get("total", 0) for v in vendas_mes)
+    desp_tot     = sum(d.get("valor", 0) for d in despesas_mes)
+    qtd_vend     = sum(v.get("qtd", 0)   for v in vendas_mes)
     custo_vendas = 0
     for v in vendas_mes:
-        prod = next((p for p in dados["estoque"] if p["id"] == v["produto_id"]), None)
+        prod = next((p for p in dados["estoque"] if p["id"] == v.get("produto_id")), None)
         if prod:
-            custo_vendas += prod["custo"] * v["qtd"]
-    lucro_real = receita - despesas - custo_vendas
-    texto = (
-        f"📊 *Resumo Financeiro — {mes}*\n\n"
-        f"💰 Receita: {formatar_real(receita)}\n"
-        f"🏷 Custo produtos: {formatar_real(custo_vendas)}\n"
-        f"💸 Despesas: {formatar_real(despesas)}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"✅ Lucro Líquido: {formatar_real(lucro_real)}\n\n"
-        f"📦 Vendas: {qtd_vend} un em {len(vendas_mes)} transações"
-    )
+            custo_vendas += prod.get("custo", 0) * v.get("qtd", 0)
+    lucro = receita - desp_tot - custo_vendas
+    texto = ("*Resumo Financeiro - {}*\n\nReceita: {}\nCusto produtos: {}\n"
+        "Despesas: {}\nLucro Liquido: {}\n\nVendas: {} un em {} transacoes"
+    ).format(mes, real(receita), real(custo_vendas), real(desp_tot), real(lucro), qtd_vend, len(vendas_mes))
     await update.message.reply_text(texto, parse_mode="Markdown")
 
 async def cmd_alerta(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados = garantir_produtos(ler_dados())
-    baixos = [p for p in dados["estoque"] if p["estoque"] < 5]
+    baixos = [p for p in dados["estoque"] if p.get("qty", p.get("estoque", 0)) < 5]
     if not baixos:
-        await update.message.reply_text("✅ Todos os produtos com estoque adequado!")
+        await update.message.reply_text("Todos os produtos com estoque adequado!")
         return
-    linhas = ["⚠️ *Produtos com estoque baixo:*\n"]
+    linhas = ["*Produtos com estoque baixo:*\n"]
     for p in baixos:
-        emoji = "🔴" if p["estoque"] == 0 else "🟡"
-        linhas.append(f"{emoji} {p['nome']}: {p['estoque']} un")
+        qty = p.get("qty", p.get("estoque", 0))
+        emoji = "🔴" if qty == 0 else "🟡"
+        linhas.append("{} {}: {} un".format(emoji, p["nome"], qty))
     await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
 
 async def cmd_apagar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -291,12 +279,13 @@ async def cmd_apagar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     despesas_mes = [d for d in dados["despesas"] if d.get("mes") == mes]
     if not ctx.args:
         if not despesas_mes:
-            await update.message.reply_text("📭 Nenhuma despesa este mês.")
+            await update.message.reply_text("Nenhuma despesa este mes.")
             return
-        linhas = ["🗑 *Escolha o número para apagar:*\n"]
+        linhas = ["*Escolha o numero para apagar:*\n"]
         for i, d in enumerate(despesas_mes, 1):
-            linhas.append(f"{i}. {d['descricao']}: {formatar_real(d['valor'])}")
-        linhas.append("\nUse: /apagar [número]")
+            desc = d.get("desc") or d.get("descricao") or "-"
+            linhas.append("{}. {}: {}".format(i, desc, real(d.get("valor", 0))))
+        linhas.append("\nUse: /apagar [numero]")
         await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
         return
     try:
@@ -304,15 +293,14 @@ async def cmd_apagar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if num < 1 or num > len(despesas_mes):
             raise ValueError
     except ValueError:
-        await update.message.reply_text("❌ Número inválido.")
+        await update.message.reply_text("Numero invalido.")
         return
     despesa_alvo = despesas_mes[num - 1]
     dados["despesas"].remove(despesa_alvo)
     salvar_dados(dados)
+    desc = despesa_alvo.get("desc") or despesa_alvo.get("descricao") or "-"
     await update.message.reply_text(
-        f"✅ Apagado: *{despesa_alvo['descricao']}*: {formatar_real(despesa_alvo['valor'])}",
-        parse_mode="Markdown"
-    )
+        "*Apagado:* {}: {}".format(desc, real(despesa_alvo.get("valor", 0))), parse_mode="Markdown")
 
 async def cmd_limpar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados = ler_dados()
@@ -321,16 +309,8 @@ async def cmd_limpar(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     dados["despesas"] = [d for d in dados["despesas"] if d.get("mes") != mes]
     salvar_dados(dados)
     removidas = antes - len(dados["despesas"])
-    await update.message.reply_text(f"🗑 *{removidas} despesa(s) apagada(s)* do mês {mes}.", parse_mode="Markdown")
-
-# ─── MAIN ─────────────────────────────────────────────────────────────────────
-async def notificar_inicio(app):
-    try:
-        msg = "*FinStack Bot Online!*\n\nBot iniciado com sucesso no Railway.\nMande /start para ver os comandos."
-        await app.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
-        print("Mensagem de inicio enviada!")
-    except Exception as e:
-        print("Erro ao notificar inicio:", e)
+    await update.message.reply_text(
+        "*{} despesa(s) apagada(s)* do mes {}.".format(removidas, mes), parse_mode="Markdown")
 
 def main():
     print("FinStack Bot iniciando...")
@@ -350,9 +330,6 @@ def main():
     app.add_handler(CommandHandler("limpar",   cmd_limpar))
     print("Bot rodando! Aguardando comandos...")
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
