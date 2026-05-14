@@ -780,23 +780,40 @@ function renderFinanceiro() {
     <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucro>=0?'var(--accent2)':'var(--danger)'}">${R(lucro)}</strong></div>
   `;
 
-  // Por produto
+  // Por produto (agrupa por produto_id, ignora cor no nome)
   const porProd = {};
   for(const v of vendas) {
-    if(!porProd[v.produto_id]) porProd[v.produto_id]={nome:v.produto_nome,qtd:0,receita:0,custo:0};
-    const p=dados.estoque.find(x=>x.id===v.produto_id);
-    porProd[v.produto_id].qtd+=v.qtd;
-    porProd[v.produto_id].receita+=v.total;
-    porProd[v.produto_id].custo+=(p?p.custo:0)*v.qtd;
+    // Extrai produto_id real (sem a cor no nome)
+    const pid = v.produto_id || v.produto_nome;
+    const nomeBase = v.produto_nome ? v.produto_nome.replace(/\s*\([^)]*\)\s*$/, '').trim() : pid;
+    if(!porProd[pid]) {
+      const p = dados.estoque.find(x=>x.id===v.produto_id);
+      porProd[pid] = {nome: p ? p.nome : nomeBase, qtd:0, receita:0, custo:0, cores:[]};
+    }
+    const p = dados.estoque.find(x=>x.id===v.produto_id);
+    porProd[pid].qtd += v.qtd;
+    porProd[pid].receita += v.total;
+    porProd[pid].custo += (p ? p.custo : 0) * v.qtd;
+    // Registra cor se tiver
+    const corMatch = v.produto_nome ? v.produto_nome.match(/\(([^)]+)\)/) : null;
+    if(corMatch) {
+      const corNome = corMatch[1];
+      const corExist = porProd[pid].cores.find(c=>c.nome===corNome);
+      if(corExist) { corExist.qtd += v.qtd; }
+      else { porProd[pid].cores.push({nome:corNome, qtd:v.qtd}); }
+    }
   }
   const itens = Object.values(porProd).sort((a,b)=>b.receita-a.receita);
   document.getElementById("fin-produtos").innerHTML = itens.length
-    ? itens.map(x=>`<tr>
-        <td>${x.nome}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace">${x.qtd}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(x.receita)}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.receita-x.custo>=0?'var(--accent2)':'var(--danger)'}">${R(x.receita-x.custo)}</td>
-      </tr>`).join("")
+    ? itens.map(x=>{
+        const coresStr = x.cores.length ? '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + x.cores.map(c=>c.nome+': '+c.qtd).join(' · ') + '</div>' : '';
+        return `<tr>
+          <td>${x.nome}${coresStr}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace">${x.qtd}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(x.receita)}</td>
+          <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.receita-x.custo>=0?'var(--accent2)':'var(--danger)'}">${R(x.receita-x.custo)}</td>
+        </tr>`;
+      }).join("")
     : `<tr><td colspan="4" class="empty">Nenhuma venda este mês</td></tr>`;
 
   // Categorias despesas
