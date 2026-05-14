@@ -132,6 +132,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     <span class="sec-title">Produtos em Estoque</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input class="search" type="text" placeholder="🔍 Buscar produto..." id="search-inp" oninput="filterTable()">
+      <button class="btn btn-outline" onclick="openModal('ov-novo-produto')">➕ Produto</button>
       <button class="btn btn-green" onclick="openEntrada()">📥 Entrada</button>
       <button class="btn btn-primary" onclick="openModalVenda()">🛒 Venda</button>
     </div>
@@ -287,9 +288,30 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div class="var-list" id="var-list"></div>
     </div>
 
+    <div class="mactions" style="justify-content:space-between">
+      <button class="btn btn-danger btn-sm" onclick="deletarProduto()">🗑 Excluir Produto</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOVO PRODUTO -->
+<div class="overlay" id="ov-novo-produto">
+  <div class="modal" style="width:420px">
+    <h2>➕ Novo Produto</h2>
+    <div class="mrow"><label>Nome do Produto</label><input type="text" id="np-nome" placeholder="Ex: Mosquiteiro Solteiro"></div>
+    <div class="mrow"><label>Código</label><input type="text" id="np-cod" placeholder="Ex: MSO-001"></div>
+    <div class="two">
+      <div class="mrow"><label>Custo Unit. (R$)</label><input type="number" id="np-custo" step="0.01" value="0"></div>
+      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="np-preco" step="0.01" value="0"></div>
+    </div>
+    <div class="mrow"><label>Quantidade Inicial</label><input type="number" id="np-qty" value="0" min="0"></div>
     <div class="mactions">
-      <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
-      <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+      <button class="btn btn-outline" onclick="closeModal('ov-novo-produto')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovoProduto()">Cadastrar Produto</button>
     </div>
   </div>
 </div>
@@ -816,6 +838,38 @@ function openVendaRapida(id) {
   }
   atualizarPreviewVenda();
   openModal("ov-venda-rapida");
+}
+
+function deletarProduto() {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
+  dados.estoque = dados.estoque.filter(x=>x.id!==id);
+  salvarDados(); renderAll(); closeModal("ov-edit");
+  toast("🗑 Produto excluído: " + p.nome);
+}
+
+function salvarNovoProduto() {
+  const nome  = document.getElementById("np-nome").value.trim();
+  const cod   = document.getElementById("np-cod").value.trim();
+  const custo = parseFloat(document.getElementById("np-custo").value)||0;
+  const preco = parseFloat(document.getElementById("np-preco").value)||0;
+  const qty   = parseInt(document.getElementById("np-qty").value)||0;
+  if(!nome) { toast("Informe o nome do produto!", true); return; }
+  if(!cod)  { toast("Informe o código do produto!", true); return; }
+  // Check duplicate
+  if(dados.estoque.find(p=>p.id===cod||p.cod===cod)) { toast("Código já existe!", true); return; }
+  dados.estoque.push({id:cod, cod:cod, nome, custo, preco, qty, estoque:qty, cores:[]});
+  if(qty > 0) {
+    dados.historico.unshift({tipo:"entrada", produto_id:cod, produto_nome:nome, qtd:qty,
+      obs:"Cadastro inicial", data:new Date().toISOString(), mes:mesAtual()});
+  }
+  salvarDados(); renderAll(); closeModal("ov-novo-produto");
+  // Clear form
+  ["np-nome","np-cod","np-custo","np-preco","np-qty"].forEach(id=>{
+    document.getElementById(id).value = id.includes("custo")||id.includes("preco")?"0":id.includes("qty")?"0":"";
+  });
+  toast("✅ Produto cadastrado: " + nome);
 }
 
 function openCorRapida(prodId, corIdx) {
