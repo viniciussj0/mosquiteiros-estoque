@@ -371,10 +371,15 @@ def handle(chat_id, text):
 
     elif cmd == "/vendas":
         dados = ler_dados()
-        mes = mes_atual()
+        mes = args[0] if args else mes_atual()
         vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
         if not vendas_mes:
-            send(chat_id, "Nenhuma venda registrada este mes.")
+            todos_meses = sorted(set(v.get("mes","") for v in dados["vendas"] if v.get("mes")), reverse=True)
+            if not todos_meses:
+                send(chat_id, "Nenhuma venda registrada.")
+                return
+            send(chat_id, "Nenhuma venda em {}.\n\nMeses com vendas:\n{}\n\nUse: /vendas 2026-04".format(
+                mes, "\n".join("- " + m for m in todos_meses)))
             return
         total = sum(v.get("total", 0) for v in vendas_mes)
         linhas = ["*Vendas de {}*\n".format(mes)]
