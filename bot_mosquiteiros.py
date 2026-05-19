@@ -374,33 +374,37 @@ def handle(chat_id, text):
         try:
             dados = ler_dados()
             mes = args[0] if args else mes_atual()
-            # Busca em vendas E historico (tipo venda)
-            todas_vendas = dados.get("vendas", [])
-            hist_vendas = [h for h in dados.get("historico", []) if h.get("tipo") == "venda"]
-            # Combina e remove duplicatas por data
-            datas_vendas = set(v.get("data","") for v in todas_vendas)
-            for h in hist_vendas:
-                if h.get("data","") not in datas_vendas:
-                    todas_vendas.append(h)
-            vendas_mes = [v for v in todas_vendas if v.get("mes") == mes]
-            if not vendas_mes:
-                todos_meses = sorted(set(v.get("mes","") for v in todas_vendas if v.get("mes")), reverse=True)
+            historico = dados.get("historico", [])
+            # Pega tudo do historico do mes (vendas e devolucoes)
+            mov_mes = [h for h in historico if h.get("mes") == mes and h.get("tipo") in ("venda", "devolucao")]
+            if not mov_mes:
+                todos_meses = sorted(set(h.get("mes","") for h in historico if h.get("mes") and h.get("tipo") in ("venda","devolucao")), reverse=True)
                 if not todos_meses:
-                    send(chat_id, "Nenhuma venda registrada no sistema.")
+                    send(chat_id, "Nenhuma movimentacao registrada no sistema.")
                     return
-                send(chat_id, "Nenhuma venda em {}.\n\nMeses com vendas:\n{}\n\nEx: /vendas {}".format(
+                send(chat_id, "Nenhuma movimentacao em {}.\n\nMeses disponiveis:\n{}\n\nEx: /vendas {}".format(
                     mes, "\n".join("- " + m for m in todos_meses), todos_meses[0]))
                 return
-            total = sum(v.get("total", 0) for v in vendas_mes)
-            linhas = ["*Vendas de {}*\n".format(mes)]
-            for i, v in enumerate(vendas_mes, 1):
-                linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome", "-"), v.get("qtd", 1), real(v.get("total", 0))))
-            linhas.append("\n*Total: {}*".format(real(total)))
-            linhas.append("\nUse /remover venda [numero] para remover")
+            vendas = [h for h in mov_mes if h.get("tipo") == "venda"]
+            devolucoes = [h for h in mov_mes if h.get("tipo") == "devolucao"]
+            total_v = sum(h.get("total", 0) for h in vendas)
+            total_d = sum(h.get("total", 0) for h in devolucoes)
+            linhas = ["*Movimentacoes de {}*\n".format(mes)]
+            if vendas:
+                linhas.append("*Vendas:*")
+                for i, v in enumerate(vendas, 1):
+                    linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome","-"), v.get("qtd",1), real(v.get("total",0))))
+                linhas.append("Total vendas: {}".format(real(total_v)))
+            if devolucoes:
+                linhas.append("\n*Devolucoes:*")
+                for i, d in enumerate(devolucoes, 1):
+                    linhas.append("{}. {} x{} - {}".format(i, d.get("produto_nome","-"), d.get("qtd",1), real(d.get("total",0))))
+                linhas.append("Total devolucoes: {}".format(real(total_d)))
+            linhas.append("\n*Liquido: {}*".format(real(total_v - total_d)))
             send(chat_id, "\n".join(linhas))
         except Exception as e:
             print("Erro em /vendas:", e)
-            send(chat_id, "Erro ao buscar vendas: " + str(e))
+            send(chat_id, "Erro: " + str(e))
 
     elif cmd == "/remover":
         if len(args) < 2:
