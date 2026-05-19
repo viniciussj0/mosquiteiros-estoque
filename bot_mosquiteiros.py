@@ -373,7 +373,14 @@ def handle(chat_id, text):
         try:
             dados = ler_dados()
             mes = args[0] if args else mes_atual()
+            # Busca em vendas E historico (tipo venda)
             todas_vendas = dados.get("vendas", [])
+            hist_vendas = [h for h in dados.get("historico", []) if h.get("tipo") == "venda"]
+            # Combina e remove duplicatas por data
+            datas_vendas = set(v.get("data","") for v in todas_vendas)
+            for h in hist_vendas:
+                if h.get("data","") not in datas_vendas:
+                    todas_vendas.append(h)
             vendas_mes = [v for v in todas_vendas if v.get("mes") == mes]
             if not vendas_mes:
                 todos_meses = sorted(set(v.get("mes","") for v in todas_vendas if v.get("mes")), reverse=True)
