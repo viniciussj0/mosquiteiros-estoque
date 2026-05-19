@@ -107,6 +107,7 @@ def handle(chat_id, text):
             "/apagar [numero] - Apagar despesa\n"
             "/limpar - Apagar despesas do mes\n"
             "/ajustar [receita|despesas] [valor|zerar] - Ajustar financeiro\n"
+            "/devolucao [produto] [qtd] - Registrar devolucao\n"
             "/zerarvendas - Zerar todas as vendas do mes\n"
             "/zerarvendas [produto] - Zerar vendas de um produto"
         )
@@ -431,6 +432,50 @@ def handle(chat_id, text):
             venda_alvo.get("produto_nome", "-"),
             venda_alvo.get("qtd", 1),
             real(venda_alvo.get("total", 0))))
+
+    elif cmd == "/devolucao":
+        if len(args) < 2:
+            send(chat_id, "Uso: /devolucao [produto] [qtd]\nEx: /devolucao casal 2\n\nO estoque sera devolvido automaticamente.")
+            return
+        try:
+            qtd = int(args[-1])
+            termo = " ".join(args[:-1])
+        except ValueError:
+            send(chat_id, "A quantidade deve ser um numero inteiro.")
+            return
+        dados = garantir_produtos(ler_dados())
+        produto = buscar_produto(dados, termo)
+        if not produto:
+            send(chat_id, "Produto '{}' nao encontrado.".format(termo))
+            return
+        # Devolve ao estoque
+        produto["qty"] = produto.get("qty", produto.get("estoque", 0)) + qtd
+        produto["estoque"] = produto["qty"]
+        reembolso = produto.get("preco", 0) * qtd
+        # Registra no historico
+        dados["historico"].insert(0, {
+            "tipo": "devolucao",
+            "produto_id": produto["id"],
+            "produto_nome": produto["nome"],
+            "qtd": qtd,
+            "total": reembolso,
+            "motivo": "Via Telegram",
+            "data": datetime.now().isoformat(),
+            "mes": mes_atual()
+        })
+        # Registra como despesa
+        dados["despesas"].insert(0, {
+            "id": int(datetime.now().timestamp() * 1000),
+            "valor": reembolso,
+            "desc": "Devolucao: {} x{}".format(produto["nome"], qtd),
+            "descricao": "Devolucao: {} x{}".format(produto["nome"], qtd),
+            "categoria": "Devolucao",
+            "data": datetime.now().isoformat(),
+            "mes": mes_atual()
+        })
+        salvar_dados(dados)
+        send(chat_id, "*Devolucao registrada!*\n{}: +{} un devolvidas\nReembolso: {}\nEstoque atual: {} un".format(
+            produto["nome"], qtd, real(reembolso), produto["qty"]))
 
     elif cmd == "/zerarvendas":
         dados = ler_dados()
