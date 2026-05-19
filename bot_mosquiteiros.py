@@ -370,24 +370,29 @@ def handle(chat_id, text):
         send(chat_id, "*{} despesa(s) apagada(s)* do mes {}.".format(removidas, mes))
 
     elif cmd == "/vendas":
-        dados = ler_dados()
-        mes = args[0] if args else mes_atual()
-        vendas_mes = [v for v in dados["vendas"] if v.get("mes") == mes]
-        if not vendas_mes:
-            todos_meses = sorted(set(v.get("mes","") for v in dados["vendas"] if v.get("mes")), reverse=True)
-            if not todos_meses:
-                send(chat_id, "Nenhuma venda registrada.")
+        try:
+            dados = ler_dados()
+            mes = args[0] if args else mes_atual()
+            todas_vendas = dados.get("vendas", [])
+            vendas_mes = [v for v in todas_vendas if v.get("mes") == mes]
+            if not vendas_mes:
+                todos_meses = sorted(set(v.get("mes","") for v in todas_vendas if v.get("mes")), reverse=True)
+                if not todos_meses:
+                    send(chat_id, "Nenhuma venda registrada no sistema.")
+                    return
+                send(chat_id, "Nenhuma venda em {}.\n\nMeses com vendas:\n{}\n\nEx: /vendas {}".format(
+                    mes, "\n".join("- " + m for m in todos_meses), todos_meses[0]))
                 return
-            send(chat_id, "Nenhuma venda em {}.\n\nMeses com vendas:\n{}\n\nUse: /vendas 2026-04".format(
-                mes, "\n".join("- " + m for m in todos_meses)))
-            return
-        total = sum(v.get("total", 0) for v in vendas_mes)
-        linhas = ["*Vendas de {}*\n".format(mes)]
-        for i, v in enumerate(vendas_mes, 1):
-            linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome", "-"), v.get("qtd", 1), real(v.get("total", 0))))
-        linhas.append("\n*Total: {}*".format(real(total)))
-        linhas.append("\nUse /remover venda [numero] para remover")
-        send(chat_id, "\n".join(linhas))
+            total = sum(v.get("total", 0) for v in vendas_mes)
+            linhas = ["*Vendas de {}*\n".format(mes)]
+            for i, v in enumerate(vendas_mes, 1):
+                linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome", "-"), v.get("qtd", 1), real(v.get("total", 0))))
+            linhas.append("\n*Total: {}*".format(real(total)))
+            linhas.append("\nUse /remover venda [numero] para remover")
+            send(chat_id, "\n".join(linhas))
+        except Exception as e:
+            print("Erro em /vendas:", e)
+            send(chat_id, "Erro ao buscar vendas: " + str(e))
 
     elif cmd == "/remover":
         if len(args) < 2:
