@@ -816,10 +816,15 @@ function renderHistorico() {
   });
 
   // Filtro por data inicial
-  if(dataIni) hist = hist.filter(h => h.data && h.data.substring(0,10) >= dataIni);
-
+  if(dataIni) {
+    const ini = new Date(dataIni + "T00:00:00");
+    hist = hist.filter(h => h.data && new Date(h.data) >= ini);
+  }
   // Filtro por data final
-  if(dataFim) hist = hist.filter(h => h.data && h.data.substring(0,10) <= dataFim);
+  if(dataFim) {
+    const fim = new Date(dataFim + "T23:59:59");
+    hist = hist.filter(h => h.data && new Date(h.data) <= fim);
+  }
 
   const el = document.getElementById("hist-list");
   const count = document.getElementById("hist-count");
@@ -881,8 +886,14 @@ function renderFinanceiro() {
     despesas = dados.despesas;
   }
 
-  if(dataIniDesp) despesas = despesas.filter(d => d.data && d.data.substring(0,10) >= dataIniDesp);
-  if(dataFimDesp) despesas = despesas.filter(d => d.data && d.data.substring(0,10) <= dataFimDesp);
+  if(dataIniDesp) {
+    const ini = new Date(dataIniDesp + "T00:00:00");
+    despesas = despesas.filter(d => d.data && new Date(d.data) >= ini);
+  }
+  if(dataFimDesp) {
+    const fim = new Date(dataFimDesp + "T23:59:59");
+    despesas = despesas.filter(d => d.data && new Date(d.data) <= fim);
+  }
 
   const receita    = vendas.reduce((s,v)=>s+(v.total||0),0);
   const despTot    = despesas.reduce((s,d)=>s+(d.valor||0),0);
