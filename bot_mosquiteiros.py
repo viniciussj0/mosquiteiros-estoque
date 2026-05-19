@@ -274,9 +274,10 @@ def handle(chat_id, text):
             if prod:
                 custo_vendas += prod.get("custo", 0) * v.get("qtd", 0)
         lucro = receita - desp_tot - custo_vendas
-        send(chat_id, ("*Resumo Financeiro - {}*\n\nReceita: {}\nCusto produtos: {}\n"
+        hoje = datetime.now().strftime("%d/%m/%Y")
+        send(chat_id, ("*Resumo Financeiro*\n{} | Hoje: {}\n\nReceita: {}\nCusto produtos: {}\n"
             "Despesas: {}\nLucro Liquido: {}\n\nVendas: {} un em {} transacoes"
-        ).format(mes, real(receita), real(custo_vendas), real(desp_tot), real(lucro), qtd_vend, len(vendas_mes)))
+        ).format(mes, hoje, real(receita), real(custo_vendas), real(desp_tot), real(lucro), qtd_vend, len(vendas_mes)))
 
     elif cmd == "/alerta":
         dados = garantir_produtos(ler_dados())
@@ -375,31 +376,37 @@ def handle(chat_id, text):
             dados = ler_dados()
             mes = args[0] if args else mes_atual()
             historico = dados.get("historico", [])
-            # Pega tudo do historico do mes (vendas e devolucoes)
-            mov_mes = [h for h in historico if h.get("mes") == mes and h.get("tipo") in ("venda", "devolucao")]
+            vendas_array = dados.get("vendas", [])
+            # Busca no historico
+            mov_mes = [h for h in historico if h.get("tipo") in ("venda","devolucao") and (h.get("mes","") == mes or (h.get("data","")[:7] == mes))]
+            # Tambem busca no array vendas
+            v_mes = [v for v in vendas_array if v.get("mes","") == mes or v.get("data","")[:7] == mes]
+            # Remove duplicatas por data
+            datas_hist = set(h.get("data","") for h in mov_mes)
+            for v in v_mes:
+                if v.get("data","") not in datas_hist:
+                    mov_mes.append(v)
             if not mov_mes:
-                todos_meses = sorted(set(h.get("mes","") for h in historico if h.get("mes") and h.get("tipo") in ("venda","devolucao")), reverse=True)
-                if not todos_meses:
-                    send(chat_id, "Nenhuma movimentacao registrada no sistema.")
-                    return
-                send(chat_id, "Nenhuma movimentacao em {}.\n\nMeses disponiveis:\n{}\n\nEx: /vendas {}".format(
-                    mes, "\n".join("- " + m for m in todos_meses), todos_meses[0]))
+                send(chat_id, "Nenhuma movimentacao em {}.\nTente: /vendas 2026-05".format(mes))
                 return
-            vendas = [h for h in mov_mes if h.get("tipo") == "venda"]
+            vendas = [h for h in mov_mes if h.get("tipo","venda") == "venda"]
             devolucoes = [h for h in mov_mes if h.get("tipo") == "devolucao"]
             total_v = sum(h.get("total", 0) for h in vendas)
             total_d = sum(h.get("total", 0) for h in devolucoes)
             linhas = ["*Movimentacoes de {}*\n".format(mes)]
             if vendas:
-                linhas.append("*Vendas:*")
-                for i, v in enumerate(vendas, 1):
-                    linhas.append("{}. {} x{} - {}".format(i, v.get("produto_nome","-"), v.get("qtd",1), real(v.get("total",0))))
-                linhas.append("Total vendas: {}".format(real(total_v)))
+                linhas.append("*Vendas ({} itens):*".format(len(vendas)))
+                for i, v in enumerate(vendas[:20], 1):
+                    data = v.get("data","")[:10] if v.get("data") else ""
+                    linhas.append("{}. {} x{} - {} {}".format(i, v.get("produto_nome","-"), v.get("qtd",1), real(v.get("total",0)), data))
+                if len(vendas) > 20:
+                    linhas.append("... e mais {} vendas".format(len(vendas)-20))
+                linhas.append("*Total: {}*".format(real(total_v)))
             if devolucoes:
-                linhas.append("\n*Devolucoes:*")
+                linhas.append("\n*Devolucoes ({} itens):*".format(len(devolucoes)))
                 for i, d in enumerate(devolucoes, 1):
                     linhas.append("{}. {} x{} - {}".format(i, d.get("produto_nome","-"), d.get("qtd",1), real(d.get("total",0))))
-                linhas.append("Total devolucoes: {}".format(real(total_d)))
+                linhas.append("*Total dev: {}*".format(real(total_d)))
             linhas.append("\n*Liquido: {}*".format(real(total_v - total_d)))
             send(chat_id, "\n".join(linhas))
         except Exception as e:
