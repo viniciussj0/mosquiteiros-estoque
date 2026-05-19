@@ -79,7 +79,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 .hist-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
 .hist-item:last-child{border-bottom:none}
 .hdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.hdot.in{background:var(--accent2)}.hdot.out{background:var(--danger)}.hdot.sale{background:var(--info)}
+.hdot.in{background:var(--accent2)}.hdot.out{background:var(--danger)}.hdot.sale{background:var(--info)}.hdot.dev{background:var(--warn)}
 .hinfo{flex:1}.hprod{font-size:13px;font-weight:500}.hdesc{font-size:12px;color:var(--text3)}
 .hqty{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap}
 .hqty.in{color:var(--accent2)}.hqty.out{color:var(--danger)}.hqty.sale{color:var(--info)}
@@ -135,6 +135,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <button class="btn btn-outline" onclick="openModal('ov-novo-produto')">➕ Produto</button>
       <button class="btn btn-green" onclick="openEntrada()">📥 Entrada</button>
       <button class="btn btn-primary" onclick="openModalVenda()">🛒 Venda</button>
+      <button class="btn" onclick="openDevolucao()" style="background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be">↩️ Devolução</button>
     </div>
   </div>
   <div class="twrap" style="overflow-x:auto">
@@ -154,6 +155,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <option value="entrada">Entradas</option>
       <option value="saida">Saídas</option>
       <option value="venda">Vendas</option>
+      <option value="devolucao">Devoluções</option>
     </select>
   </div>
   <div class="twrap">
@@ -294,6 +296,30 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
         <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
         <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEVOLUÇÃO -->
+<div class="overlay" id="ov-devolucao">
+  <div class="modal" style="width:420px">
+    <h2>↩️ Registrar Devolução</h2>
+    <div class="mrow"><label>Produto</label><select id="dev-produto" onchange="atualizarPreviewDev()"></select></div>
+    <div id="dev-cores-section"></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="dev-qtd" value="1" min="1" oninput="atualizarPreviewDev()"></div>
+    <div class="mrow"><label>Motivo</label>
+      <select id="dev-motivo">
+        <option>Cliente desistiu</option>
+        <option>Produto com defeito</option>
+        <option>Produto errado</option>
+        <option>Troca</option>
+        <option>Outros</option>
+      </select>
+    </div>
+    <div id="dev-preview" style="background:var(--danger-light);border:1px solid #f0c4be;border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:8px;display:none"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-devolucao')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarDevolucao()" style="background:var(--danger);color:#fff">↩️ Confirmar Devolução</button>
     </div>
   </div>
 </div>
@@ -653,6 +679,7 @@ function renderEstoque() {
     <div class="sum-card ${zer>0?'danger':'ok'}"><div class="lbl">Zerados</div><div class="val">${zer}</div><div class="sub">produtos sem estoque</div></div>
     <div class="sum-card ${bx>0?'warn':'ok'}"><div class="lbl">Estoque Baixo</div><div class="val">${bx}</div><div class="sub">abaixo de 5 unidades</div></div>
     <div class="sum-card"><div class="lbl">Valor em Estoque</div><div class="val" style="font-size:16px">${R(valTotal)}</div><div class="sub">ao custo</div></div>
+    <div class="sum-card danger"><div class="lbl">Devoluções</div><div class="val" style="font-size:20px">${dados.historico.filter(h=>h.tipo==="devolucao"&&h.mes===mesAtual()).length}</div><div class="sub">este mês</div></div>
   `;
 
   document.getElementById("tbody").innerHTML = prods.length ? prods.map(p=>{
@@ -689,6 +716,7 @@ function renderEstoque() {
         ${p.foto ? `<img src="${p.foto}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openImagem('${p.id}')" title="Ver/trocar foto">` : `<button class="btn btn-outline btn-xs" onclick="openImagem('${p.id}')" title="Adicionar foto">📷</button>`}
         <button class="btn btn-outline btn-xs" onclick="openEdit('${p.id}')">✏️</button>
         <button class="btn btn-xs" onclick="openVendaRapida('${p.id}')" style="background:var(--accent);color:#fff">🛒</button>
+        <button class="btn btn-xs" onclick="openDevolucaoProduto('${p.id}')" style="background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be" title="Devolução">↩️</button>
       </td>
     </tr>`;
   }).join("") : `<tr><td colspan="8"><div class="empty"><div class="ico">🔍</div>Nenhum produto encontrado</div></td></tr>`;
@@ -727,9 +755,9 @@ function renderHistorico() {
   const el = document.getElementById("hist-list");
   if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação</div>'; return; }
   el.innerHTML = hist.slice(0,100).map(h=>{
-    const cls = h.tipo==="entrada"?"in":h.tipo==="venda"?"sale":"out";
-    const icon = h.tipo==="entrada"?"📥":h.tipo==="venda"?"🛒":"📤";
-    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total)})`: `−${h.qtd} un`;
+    const cls = h.tipo==="entrada"?"in":h.tipo==="venda"?"sale":h.tipo==="devolucao"?"dev":"out";
+    const icon = h.tipo==="entrada"?"📥":h.tipo==="venda"?"🛒":h.tipo==="devolucao"?"↩️":"📤";
+    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total)})`:h.tipo==="devolucao"?`+${h.qtd} un devolvido`:`−${h.qtd} un`;
     return `<div class="hist-item">
       <div class="hdot ${cls}"></div>
       <div class="hinfo">
@@ -855,6 +883,95 @@ function openVendaRapida(id) {
   }
   atualizarPreviewVenda();
   openModal("ov-venda-rapida");
+}
+
+function openDevolucao() {
+  const sel = document.getElementById("dev-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  atualizarCoresDev();
+  atualizarPreviewDev();
+  openModal("ov-devolucao");
+}
+
+function openDevolucaoProduto(id) {
+  const sel = document.getElementById("dev-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  sel.value = id;
+  atualizarCoresDev();
+  atualizarPreviewDev();
+  openModal("ov-devolucao");
+}
+
+function atualizarCoresDev() {
+  const id = document.getElementById("dev-produto").value;
+  const p  = dados.estoque.find(x=>x.id===id);
+  const sec = document.getElementById("dev-cores-section");
+  if(p && p.cores && p.cores.length > 0) {
+    sec.innerHTML = `<div class="mrow"><label>Variação de Cor</label><select id="dev-cor">
+      <option value="">Sem variação específica</option>
+      ${p.cores.map((c,i)=>`<option value="${i}">${c.nome} (${c.qty} un)</option>`).join('')}
+    </select></div>`;
+  } else {
+    sec.innerHTML = '';
+  }
+}
+
+function atualizarPreviewDev() {
+  const id  = document.getElementById("dev-produto").value;
+  const qtd = parseInt(document.getElementById("dev-qtd").value)||1;
+  const p   = dados.estoque.find(x=>x.id===id);
+  const prev = document.getElementById("dev-preview");
+  if(p && prev) {
+    prev.style.display = "block";
+    const reembolso = p.preco * qtd;
+    prev.innerHTML = `<strong>↩️ Devolução:</strong> ${qtd}x ${p.nome}<br><span style="color:var(--danger)">Reembolso: ${R(reembolso)}</span>`;
+  }
+}
+
+function confirmarDevolucao() {
+  const id    = document.getElementById("dev-produto").value;
+  const qtd   = parseInt(document.getElementById("dev-qtd").value)||1;
+  const motivo = document.getElementById("dev-motivo").value;
+  const p     = dados.estoque.find(x=>x.id===id); if(!p) return;
+
+  const corSel = document.getElementById("dev-cor");
+  const corIdx = corSel ? parseInt(corSel.value) : NaN;
+
+  // Devolve ao estoque
+  if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
+    p.cores[corIdx].qty += qtd;
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  } else {
+    p.qty += qtd;
+  }
+  p.estoque = p.qty;
+
+  const reembolso = p.preco * qtd;
+
+  // Registra no historico
+  dados.historico.unshift({
+    tipo: "devolucao",
+    produto_id: p.id,
+    produto_nome: p.nome,
+    qtd, total: reembolso,
+    motivo,
+    data: new Date().toISOString(),
+    mes: mesAtual()
+  });
+
+  // Registra como despesa (reembolso)
+  dados.despesas.unshift({
+    id: Date.now(),
+    valor: reembolso,
+    desc: "Devolucao: " + p.nome + " x" + qtd + " (" + motivo + ")",
+    descricao: "Devolucao: " + p.nome,
+    categoria: "Devolucao",
+    data: new Date().toISOString(),
+    mes: mesAtual()
+  });
+
+  salvarDados(); renderAll(); closeModal("ov-devolucao");
+  toast("↩️ Devolução registrada: " + qtd + "x " + p.nome);
 }
 
 function deletarProduto() {
