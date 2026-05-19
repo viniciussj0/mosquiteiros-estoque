@@ -148,15 +148,25 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 
 <!-- ═══ HISTÓRICO ═════════════════════════════════════════════════════════════ -->
 <div class="page" id="page-historico">
-  <div class="sec-hd">
+  <div class="sec-hd" style="flex-wrap:wrap;gap:10px">
     <span class="sec-title">Histórico de Movimentações</span>
-    <select id="hist-filtro" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
-      <option value="todos">Todos</option>
-      <option value="entrada">Entradas</option>
-      <option value="saida">Saídas</option>
-      <option value="venda">Vendas</option>
-      <option value="devolucao">Devoluções</option>
-    </select>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="hist-filtro" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+        <option value="todos">Todos os tipos</option>
+        <option value="entrada">📥 Entradas</option>
+        <option value="saida">📤 Saídas</option>
+        <option value="venda">🛒 Vendas</option>
+        <option value="devolucao">↩️ Devoluções</option>
+      </select>
+      <select id="hist-mes" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+        <option value="">Todos os meses</option>
+      </select>
+      <input type="date" id="hist-data-ini" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data inicial">
+      <input type="date" id="hist-data-fim" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data final">
+      <button class="btn btn-primary btn-sm" onclick="renderHistorico()">🔍 Buscar</button>
+      <button class="btn btn-outline btn-sm" onclick="limparFiltrosHist()">✕ Limpar</button>
+      <span id="hist-count" style="font-size:12px;color:var(--text3)"></span>
+    </div>
   </div>
   <div class="twrap">
     <div style="padding:1rem" id="hist-list"></div>
@@ -199,6 +209,13 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           <option value="30">Últimos 30 dias</option>
           <option value="todos">Tudo</option>
         </select>
+        <select id="desp-mes-filtro" onchange="renderFinanceiro()" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none">
+          <option value="">Todos os meses</option>
+        </select>
+        <input type="date" id="desp-data-ini" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none" title="Data inicial">
+        <input type="date" id="desp-data-fim" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none" title="Data final">
+        <button class="btn btn-sm" onclick="renderFinanceiro()" style="background:var(--danger);color:#fff">🔍 Buscar</button>
+        <button class="btn btn-sm btn-outline" onclick="limparFiltrosDesp()" style="border-color:#f0c4be">✕ Limpar</button>
         <button class="btn btn-sm" onclick="openModalDesp()" style="background:var(--danger);color:#fff">+ Nova Despesa</button>
       </div>
     </div>
@@ -748,21 +765,77 @@ function altQty(id, delta) {
 function filterTable() { renderEstoque(); }
 
 // ── RENDER HISTÓRICO ──────────────────────────────────────────────────────────
+function popularMesesHist() {
+  const sel = document.getElementById("hist-mes");
+  if(!sel) return;
+  const meses = new Set();
+  dados.historico.forEach(h => { if(h.mes) meses.add(h.mes); else if(h.data) meses.add(h.data.substring(0,7)); });
+  const atual = sel.value;
+  const opts = ['<option value="">Todos os meses</option>'];
+  [...meses].sort().reverse().forEach(m => {
+    const [ano, mes] = m.split("-");
+    const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    const label = nomes[parseInt(mes)-1] + "/" + ano;
+    opts.push(`<option value="${m}" ${m===atual?"selected":""}>${label}</option>`);
+  });
+  sel.innerHTML = opts.join("");
+}
+
+function limparFiltrosDesp() {
+  document.getElementById("desp-filtro").value = "mes";
+  document.getElementById("desp-mes-filtro").value = "";
+  document.getElementById("desp-data-ini").value = "";
+  document.getElementById("desp-data-fim").value = "";
+  renderFinanceiro();
+}
+
+function limparFiltrosHist() {
+  document.getElementById("hist-filtro").value = "todos";
+  document.getElementById("hist-mes").value = "";
+  document.getElementById("hist-data-ini").value = "";
+  document.getElementById("hist-data-fim").value = "";
+  renderHistorico();
+}
+
 function renderHistorico() {
-  const filtro = document.getElementById("hist-filtro").value;
+  popularMesesHist();
+  const filtro  = document.getElementById("hist-filtro").value;
+  const mesFilt = document.getElementById("hist-mes").value;
+  const dataIni = document.getElementById("hist-data-ini").value;
+  const dataFim = document.getElementById("hist-data-fim").value;
+
   let hist = [...dados.historico];
-  if(filtro!=="todos") hist = hist.filter(h=>h.tipo===filtro);
+
+  // Filtro por tipo
+  if(filtro !== "todos") hist = hist.filter(h => h.tipo === filtro);
+
+  // Filtro por mês
+  if(mesFilt) hist = hist.filter(h => {
+    const m = h.mes || (h.data ? h.data.substring(0,7) : "");
+    return m === mesFilt;
+  });
+
+  // Filtro por data inicial
+  if(dataIni) hist = hist.filter(h => h.data && h.data.substring(0,10) >= dataIni);
+
+  // Filtro por data final
+  if(dataFim) hist = hist.filter(h => h.data && h.data.substring(0,10) <= dataFim);
+
   const el = document.getElementById("hist-list");
-  if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação</div>'; return; }
-  el.innerHTML = hist.slice(0,100).map(h=>{
+  const count = document.getElementById("hist-count");
+  if(count) count.textContent = hist.length + " registros";
+
+  if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação encontrada</div>'; return; }
+
+  el.innerHTML = hist.slice(0,200).map(h=>{
     const cls = h.tipo==="entrada"?"in":h.tipo==="venda"?"sale":h.tipo==="devolucao"?"dev":"out";
     const icon = h.tipo==="entrada"?"📥":h.tipo==="venda"?"🛒":h.tipo==="devolucao"?"↩️":"📤";
-    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total)})`:h.tipo==="devolucao"?`+${h.qtd} un devolvido`:`−${h.qtd} un`;
+    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total||0)})`:h.tipo==="devolucao"?`+${h.qtd} un devolvido`:`−${h.qtd} un`;
     return `<div class="hist-item">
       <div class="hdot ${cls}"></div>
       <div class="hinfo">
         <div class="hprod">${icon} ${h.produto_nome}</div>
-        <div class="hdesc">${h.tipo.charAt(0).toUpperCase()+h.tipo.slice(1)}${h.obs?" — "+h.obs:""}${h.pgto?" — "+h.pgto:""}</div>
+        <div class="hdesc">${h.tipo.charAt(0).toUpperCase()+h.tipo.slice(1)}${h.obs?" — "+h.obs:""}${h.pgto&&h.pgto!=="Não informado"?" — "+h.pgto:""}${h.motivo?" — "+h.motivo:""}</div>
       </div>
       <div class="hqty ${cls}">${label}</div>
       <div class="htime">${fmtData(h.data)}</div>
@@ -776,12 +849,40 @@ function renderFinanceiro() {
   const vendas   = dados.vendas.filter(v=>v.mes===mes);
   const filtro   = document.getElementById("desp-filtro")?.value || "mes";
   let despesas;
-  if(filtro==="mes") despesas = dados.despesas.filter(d=>{
-    const dm = d.mes || (d.data ? d.data.substring(0,7) : '');
-    return dm === mes;
-  });
-  else if(filtro==="30") { const d30=new Date(); d30.setDate(d30.getDate()-30); despesas=dados.despesas.filter(d=>new Date(d.data)>=d30); }
-  else despesas = dados.despesas;
+  // Popular meses no select
+  const deспMesSel = document.getElementById("desp-mes-filtro");
+  if(deспMesSel) {
+    const mesesDesp = new Set();
+    dados.despesas.forEach(d => { const m = d.mes||(d.data?d.data.substring(0,7):""); if(m) mesesDesp.add(m); });
+    const atualMes = deспMesSel.value;
+    const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    deспMesSel.innerHTML = '<option value="">Todos os meses</option>' +
+      [...mesesDesp].sort().reverse().map(m => {
+        const [a,mm] = m.split("-");
+        return `<option value="${m}" ${m===atualMes?"selected":""}>${nomes[parseInt(mm)-1]}/${a}</option>`;
+      }).join("");
+  }
+
+  const mesFiltDesp = document.getElementById("desp-mes-filtro")?.value || "";
+  const dataIniDesp = document.getElementById("desp-data-ini")?.value || "";
+  const dataFimDesp = document.getElementById("desp-data-fim")?.value || "";
+
+  if(mesFiltDesp) {
+    despesas = dados.despesas.filter(d => (d.mes||(d.data?d.data.substring(0,7):"")) === mesFiltDesp);
+  } else if(filtro==="mes") {
+    despesas = dados.despesas.filter(d=>{
+      const dm = d.mes || (d.data ? d.data.substring(0,7) : '');
+      return dm === mes;
+    });
+  } else if(filtro==="30") {
+    const d30=new Date(); d30.setDate(d30.getDate()-30);
+    despesas=dados.despesas.filter(d=>new Date(d.data)>=d30);
+  } else {
+    despesas = dados.despesas;
+  }
+
+  if(dataIniDesp) despesas = despesas.filter(d => d.data && d.data.substring(0,10) >= dataIniDesp);
+  if(dataFimDesp) despesas = despesas.filter(d => d.data && d.data.substring(0,10) <= dataFimDesp);
 
   const receita    = vendas.reduce((s,v)=>s+(v.total||0),0);
   const despTot    = despesas.reduce((s,d)=>s+(d.valor||0),0);
