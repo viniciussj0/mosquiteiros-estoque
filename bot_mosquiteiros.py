@@ -62,15 +62,17 @@ def salvar_dados(dados):
         print("Erro ao salvar JSONBin:", e)
 
 def garantir_produtos(dados):
-    ids = [p["id"] for p in dados["estoque"]]
-    for p in PRODUTOS_PADRAO:
-        if p["id"] not in ids:
-            dados["estoque"].append(dict(p))
+    # Compatibilidade qty/estoque
     for p in dados["estoque"]:
         if "qty" not in p:
             p["qty"] = p.get("estoque", 0)
         if "estoque" not in p:
             p["estoque"] = p.get("qty", 0)
+    # So adiciona produtos padrao se o estoque estiver vazio
+    # Nao reinsere produtos deletados
+    if len(dados["estoque"]) == 0:
+        for p in PRODUTOS_PADRAO:
+            dados["estoque"].append(dict(p))
     return dados
 
 def buscar_produto(dados, termo):
