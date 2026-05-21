@@ -484,23 +484,33 @@ let lastSaveTime = 0;
 // ── JSONBIN ───────────────────────────────────────────────────────────────────
 async function lerDados() {
   if(saving) return;
-  // Não sincroniza por 15 segundos após um save para evitar sobrescrever
-  if(Date.now() - lastSaveTime < 15000) return;
+  // Não sincroniza por 20 segundos após um save
+  if(Date.now() - lastSaveTime < 20000) {
+    setSyncLabel("Sincronizado ✓");
+    return;
+  }
   try {
     const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
     const j = await r.json();
-    dados = j.record || {};
-    dados.estoque   = dados.estoque   || [];
-    dados.despesas  = dados.despesas  || [];
-    dados.vendas    = dados.vendas    || [];
-    dados.historico = dados.historico || [];
-    garantirProdutos();
+    const remoto = j.record || {};
+    // Só atualiza se o dado remoto for mais novo que o local
+    const tsRemoto = remoto._ts || 0;
+    const tsLocal  = dados._ts  || 0;
+    if(tsRemoto >= tsLocal) {
+      dados = remoto;
+      dados.estoque   = dados.estoque   || [];
+      dados.despesas  = dados.despesas  || [];
+      dados.vendas    = dados.vendas    || [];
+      dados.historico = dados.historico || [];
+      garantirProdutos();
+    }
     setSyncLabel("Sincronizado ✓");
   } catch(e) { setSyncLabel("Erro de sync"); }
 }
 
 async function salvarDados() {
   dados.estoque.forEach(p => { p.estoque = p.qty; });
+  dados._ts = Date.now(); // timestamp para controle de versão
   setSyncLabel("Salvando...");
   lastSaveTime = Date.now();
   try {
