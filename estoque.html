@@ -558,7 +558,7 @@ function openEntrada() {
   openModal("ov-entrada");
 }
 
-function confirmarEntrada() {
+async function confirmarEntrada() {
   const id  = document.getElementById("ent-produto").value;
   const qtd = parseInt(document.getElementById("ent-qtd").value);
   const obs = document.getElementById("ent-obs").value;
@@ -567,7 +567,7 @@ function confirmarEntrada() {
   if(!p) return;
   p.qty += qtd;
   dados.historico.unshift({tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()});
-  salvarDados(); renderAll(); closeModal("ov-entrada");
+  await salvarDados(); renderAll(); closeModal("ov-entrada");
   toast(`✅ +${qtd} unidades de ${p.nome}`);
 }
 
@@ -578,7 +578,7 @@ function openModalVenda() {
   openModal("ov-venda");
 }
 
-function confirmarVenda() {
+async function confirmarVenda() {
   const id  = document.getElementById("venda-produto").value;
   const qtd = parseInt(document.getElementById("venda-qtd").value);
   const pgto = document.getElementById("venda-pgto").value;
@@ -590,7 +590,7 @@ function confirmarVenda() {
   const total = p.preco * qtd;
   dados.vendas.push({produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
   dados.historico.unshift({tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
-  salvarDados(); renderAll(); closeModal("ov-venda");
+  await salvarDados(); renderAll(); closeModal("ov-venda");
   toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
 }
 
@@ -654,7 +654,7 @@ function calcEditMargem() {
   if(c>0 && v>0) { const m=((v-c)/v*100); el.textContent=`Margem: ${m.toFixed(1)}% | Lucro unit.: ${R(v-c)}`; el.style.color=m>30?"var(--accent2)":m>15?"var(--warn)":"var(--danger)"; }
   else el.textContent="";
 }
-function salvarEdicao() {
+async function salvarEdicao() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   p.nome  = document.getElementById("edit-nome").value;
@@ -665,7 +665,7 @@ function salvarEdicao() {
   if(p.cores && p.cores.length > 0) {
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   }
-  salvarDados(); renderAll(); closeModal("ov-edit");
+  await await salvarDados(); renderAll(); closeModal("ov-edit");
   toast("✅ Produto atualizado!");
 }
 
@@ -674,18 +674,18 @@ function openModalDesp() {
   document.getElementById("desp-desc").value="";
   openModal("ov-desp"); 
 }
-function salvarDesp() {
+async function salvarDesp() {
   const valor = parseFloat(document.getElementById("desp-valor").value);
   const desc  = document.getElementById("desp-desc").value.trim();
   const cat   = document.getElementById("desp-cat").value;
   if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
   dados.despesas.unshift({id:Date.now(), valor, desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()});
-  salvarDados(); renderFinanceiro(); closeModal("ov-desp");
+  await await salvarDados(); renderFinanceiro(); closeModal("ov-desp");
   toast("✅ Despesa registrada!");
 }
-function removerDesp(id) {
+async function removerDesp(id) {
   dados.despesas = dados.despesas.filter(d=>d.id!==id);
-  salvarDados(); renderFinanceiro();
+  await salvarDados(); renderFinanceiro();
   toast("🗑 Despesa removida");
 }
 
@@ -746,7 +746,7 @@ function renderEstoque() {
   }).join("") : `<tr><td colspan="8"><div class="empty"><div class="ico">🔍</div>Nenhum produto encontrado</div></td></tr>`;
 }
 
-function altQty(id, delta) {
+async function altQty(id, delta) {
   const p = dados.estoque.find(x=>x.id===id);
   if(!p || p.qty+delta<0) return;
   p.qty += delta;
@@ -766,7 +766,7 @@ function altQty(id, delta) {
     });
   }
   dados.historico.unshift(reg);
-  salvarDados(); renderEstoque();
+  await salvarDados(); renderEstoque();
   if(delta < 0) toast(`🛒 Venda registrada: ${Math.abs(delta)}x ${p.nome}`);
 }
 function filterTable() { renderEstoque(); }
@@ -1047,7 +1047,7 @@ function atualizarPreviewDev() {
   }
 }
 
-function confirmarDevolucao() {
+async function confirmarDevolucao() {
   const id    = document.getElementById("dev-produto").value;
   const qtd   = parseInt(document.getElementById("dev-qtd").value)||1;
   const motivo = document.getElementById("dev-motivo").value;
@@ -1089,20 +1089,20 @@ function confirmarDevolucao() {
     mes: mesAtual()
   });
 
-  salvarDados(); renderAll(); closeModal("ov-devolucao");
+  await salvarDados(); renderAll(); closeModal("ov-devolucao");
   toast("↩️ Devolução registrada: " + qtd + "x " + p.nome);
 }
 
-function deletarProduto() {
+async function deletarProduto() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
   dados.estoque = dados.estoque.filter(x=>x.id!==id);
-  salvarDados(); renderAll(); closeModal("ov-edit");
+  await await salvarDados(); renderAll(); closeModal("ov-edit");
   toast("🗑 Produto excluído: " + p.nome);
 }
 
-function salvarNovoProduto() {
+async function salvarNovoProduto() {
   const nome  = document.getElementById("np-nome").value.trim();
   const cod   = document.getElementById("np-cod").value.trim();
   const custo = parseFloat(document.getElementById("np-custo").value)||0;
@@ -1117,7 +1117,7 @@ function salvarNovoProduto() {
     dados.historico.unshift({tipo:"entrada", produto_id:cod, produto_nome:nome, qtd:qty,
       obs:"Cadastro inicial", data:new Date().toISOString(), mes:mesAtual()});
   }
-  salvarDados(); renderAll(); closeModal("ov-novo-produto");
+  await salvarDados(); renderAll(); closeModal("ov-novo-produto");
   // Clear form
   ["np-nome","np-cod","np-custo","np-preco","np-qty"].forEach(id=>{
     document.getElementById(id).value = id.includes("custo")||id.includes("preco")?"0":id.includes("qty")?"0":"";
@@ -1144,7 +1144,7 @@ function ajustarCorQtyModal(delta) {
   if(val + delta >= 1) inp.value = val + delta;
 }
 
-function confirmarCorRapida(tipo) {
+async function confirmarCorRapida(tipo) {
   const prodId = document.getElementById("cr-prod-id").value;
   const corIdx = parseInt(document.getElementById("cr-cor-idx").value);
   const qtd    = parseInt(document.getElementById("cr-quantidade").value)||1;
@@ -1172,7 +1172,7 @@ function confirmarCorRapida(tipo) {
 
   p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   p.estoque = p.qty;
-  salvarDados(); renderAll(); closeModal("ov-cor-rapida");
+  await salvarDados(); renderAll(); closeModal("ov-cor-rapida");
 }
 
 async function vendaCorRapida(prodId, corIdx) {
@@ -1201,7 +1201,7 @@ document.addEventListener("input", e => {
   if(e.target.id === "vr-qtd") atualizarPreviewVenda();
 });
 
-function confirmarVendaRapida() {
+async function confirmarVendaRapida() {
   const id   = document.getElementById("vr-produto-id").value;
   const qtd  = parseInt(document.getElementById("vr-qtd").value)||1;
   const pgto = document.getElementById("vr-pgto").value;
@@ -1231,7 +1231,7 @@ function confirmarVendaRapida() {
     produto_nome:p.nome, qtd, total:receita, pgto,
     data:new Date().toISOString(), mes:mesAtual()});
   
-  salvarDados(); renderAll(); closeModal("ov-venda-rapida");
+  await salvarDados(); renderAll(); closeModal("ov-venda-rapida");
   toast("🛒 Venda: " + qtd + "x " + p.nome + " — " + R(receita));
 }
 
@@ -1270,20 +1270,20 @@ function previewImagemUrl(url) {
   document.getElementById("img-placeholder").style.display = "none";
 }
 
-function salvarImagem() {
+async function salvarImagem() {
   const id  = document.getElementById("img-produto-id").value;
   const url = document.getElementById("img-url").value || document.getElementById("img-preview").src;
   const p   = dados.estoque.find(x=>x.id===id); if(!p) return;
   p.foto = url;
-  salvarDados(); renderAll(); closeModal("ov-imagem");
+  await salvarDados(); renderAll(); closeModal("ov-imagem");
   toast("📷 Foto salva!");
 }
 
-function removerImagem() {
+async function removerImagem() {
   const id = document.getElementById("img-produto-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   p.foto = "";
-  salvarDados(); renderAll(); closeModal("ov-imagem");
+  await salvarDados(); renderAll(); closeModal("ov-imagem");
   toast("🗑 Foto removida");
 }
 
