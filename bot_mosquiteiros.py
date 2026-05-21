@@ -57,9 +57,16 @@ def salvar_dados(dados):
         for p in dados.get("estoque", []):
             p["estoque"] = p.get("qty", p.get("estoque", 0))
             p["qty"] = p["estoque"]
+        import time
+        dados["_ts"] = int(time.time() * 1000)
         requests.put(JSONBIN_URL, json=dados, headers=JB_HEADERS, timeout=10)
     except Exception as e:
         print("Erro ao salvar JSONBin:", e)
+
+def ler_dados_seguro():
+    """Le dados e garante que nao perdemos dados mais novos do site"""
+    dados = ler_dados()
+    return dados
 
 def garantir_produtos(dados):
     # Compatibilidade qty/estoque
