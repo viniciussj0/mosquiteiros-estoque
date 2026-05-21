@@ -479,10 +479,13 @@ const PRODUTOS_PADRAO = [
 
 let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
 let saving = false;
+let lastSaveTime = 0;
 
 // ── JSONBIN ───────────────────────────────────────────────────────────────────
 async function lerDados() {
-  if(saving) return; // Não atualiza se estiver salvando
+  if(saving) return;
+  // Não sincroniza por 15 segundos após um save para evitar sobrescrever
+  if(Date.now() - lastSaveTime < 15000) return;
   try {
     const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
     const j = await r.json();
@@ -499,6 +502,7 @@ async function lerDados() {
 async function salvarDados() {
   dados.estoque.forEach(p => { p.estoque = p.qty; });
   setSyncLabel("Salvando...");
+  lastSaveTime = Date.now();
   try {
     await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
     setSyncLabel("Sincronizado ✓");
@@ -1175,19 +1179,13 @@ async function vendaCorRapida(prodId, corIdx) {
   const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
   const cor = p.cores[corIdx];
   if(!cor || cor.qty <= 0) { toast("Estoque zerado para " + cor.nome + "!", true); return; }
+  // Só decrementa estoque, sem registrar venda
   cor.qty -= 1;
   p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   p.estoque = p.qty;
-  const receita = p.preco * 1;
-  dados.vendas.push({produto_id:p.id, produto_nome:p.nome + " (" + cor.nome + ")",
-    qtd:1, preco_unitario:p.preco, total:receita, pgto:"Não informado",
-    data:new Date().toISOString(), mes:mesAtual()});
-  dados.historico.unshift({tipo:"venda", produto_id:p.id,
-    produto_nome:p.nome + " (" + cor.nome + ")", qtd:1, total:receita,
-    data:new Date().toISOString(), mes:mesAtual()});
   await salvarDados();
   renderEstoque();
-  toast("🛒 -1 " + cor.nome + " de " + p.nome);
+  toast("−1 " + cor.nome + " · Estoque: " + cor.qty);
 }
 
 function atualizarPreviewVenda() {
