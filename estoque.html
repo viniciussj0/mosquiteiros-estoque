@@ -484,8 +484,8 @@ let lastSaveTime = 0;
 // ── JSONBIN ───────────────────────────────────────────────────────────────────
 async function lerDados() {
   if(saving) return;
-  // Não sincroniza por 20 segundos após um save
-  if(Date.now() - lastSaveTime < 20000) {
+  // Não sincroniza por 25 segundos após um save
+  if(lastSaveTime > 0 && Date.now() - lastSaveTime < 25000) {
     setSyncLabel("Sincronizado ✓");
     return;
   }
@@ -493,10 +493,11 @@ async function lerDados() {
     const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
     const j = await r.json();
     const remoto = j.record || {};
-    // Só atualiza se o dado remoto for mais novo que o local
     const tsRemoto = remoto._ts || 0;
     const tsLocal  = dados._ts  || 0;
-    if(tsRemoto >= tsLocal) {
+    // Sempre carrega se for primeira vez (tsLocal === 0)
+    // Só bloqueia se local for mais novo que remoto
+    if(tsLocal === 0 || tsRemoto >= tsLocal) {
       dados = remoto;
       dados.estoque   = dados.estoque   || [];
       dados.despesas  = dados.despesas  || [];
@@ -505,18 +506,36 @@ async function lerDados() {
       garantirProdutos();
     }
     setSyncLabel("Sincronizado ✓");
-  } catch(e) { setSyncLabel("Erro de sync"); }
+  } catch(e) {
+    try {
+      const backup = localStorage.getItem('finstack_backup');
+      if(backup) { dados = JSON.parse(backup); garantirProdutos(); }
+    } catch(e2) {}
+    setSyncLabel("Erro de sync");
+  }
 }
 
 async function salvarDados() {
   dados.estoque.forEach(p => { p.estoque = p.qty; });
-  dados._ts = Date.now(); // timestamp para controle de versão
-  setSyncLabel("Salvando...");
+  dados._ts = Date.now();
   lastSaveTime = Date.now();
-  try {
-    await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
-    setSyncLabel("Sincronizado ✓");
-  } catch(e) { setSyncLabel("Erro ao salvar"); }
+  setSyncLabel("Salvando...");
+  // Salva cópia local imediatamente
+  try { localStorage.setItem('finstack_backup', JSON.stringify(dados)); } catch(e) {}
+  let tentativas = 0;
+  while(tentativas < 3) {
+    try {
+      const resp = await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
+      if(resp.ok) {
+        setSyncLabel("Salvo ✓");
+        return;
+      }
+    } catch(e) {}
+    tentativas++;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  setSyncLabel("⚠️ Erro ao salvar!");
+  toast("⚠️ Erro ao salvar! Tente novamente.", true);
 }
 
 function garantirProdutos() {
