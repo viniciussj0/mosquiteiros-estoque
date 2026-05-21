@@ -513,8 +513,12 @@ function garantirProdutos() {
     if(p.estoque === undefined && p.qty !== undefined) p.estoque = p.qty;
     if(p.cod === undefined) p.cod = p.id;
   });
-  const ids = dados.estoque.map(p=>p.id);
-  for(const p of PRODUTOS_PADRAO) if(!ids.includes(p.id)) dados.estoque.push({...p});
+  // Só adiciona produtos padrão se o estoque estiver completamente vazio
+  // (primeira vez que o sistema é usado)
+  // Não reinsere produtos que foram deletados
+  if(dados.estoque.length === 0) {
+    for(const p of PRODUTOS_PADRAO) dados.estoque.push({...p});
+  }
 }
 
 function setSyncLabel(t) { document.getElementById("sync-label").textContent = t; }
