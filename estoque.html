@@ -482,6 +482,7 @@ let saving = false;
 
 // ── JSONBIN ───────────────────────────────────────────────────────────────────
 async function lerDados() {
+  if(saving) return; // Não atualiza se estiver salvando
   try {
     const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
     const j = await r.json();
@@ -497,13 +498,11 @@ async function lerDados() {
 
 async function salvarDados() {
   dados.estoque.forEach(p => { p.estoque = p.qty; });
-  if(saving) return; saving = true;
   setSyncLabel("Salvando...");
   try {
     await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
     setSyncLabel("Sincronizado ✓");
   } catch(e) { setSyncLabel("Erro ao salvar"); }
-  saving = false;
 }
 
 function garantirProdutos() {
@@ -1172,7 +1171,7 @@ function confirmarCorRapida(tipo) {
   salvarDados(); renderAll(); closeModal("ov-cor-rapida");
 }
 
-function vendaCorRapida(prodId, corIdx) {
+async function vendaCorRapida(prodId, corIdx) {
   const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
   const cor = p.cores[corIdx];
   if(!cor || cor.qty <= 0) { toast("Estoque zerado para " + cor.nome + "!", true); return; }
@@ -1186,7 +1185,8 @@ function vendaCorRapida(prodId, corIdx) {
   dados.historico.unshift({tipo:"venda", produto_id:p.id,
     produto_nome:p.nome + " (" + cor.nome + ")", qtd:1, total:receita,
     data:new Date().toISOString(), mes:mesAtual()});
-  salvarDados(); renderEstoque();
+  await salvarDados();
+  renderEstoque();
   toast("🛒 -1 " + cor.nome + " de " + p.nome);
 }
 
