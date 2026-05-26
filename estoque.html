@@ -240,7 +240,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
         <div style="font-weight:600;font-size:14px;color:var(--accent)" id="bot-status-txt">Verificando bot...</div>
       </div>
       <div style="font-size:12px;color:var(--text2)">Bot: <strong>@estoquemsq_bot</strong> — Railway 24h</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px">Dados sincronizados com JSONBin a cada 30 segundos.</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Dados sincronizados com Supabase em tempo real.</div>
     </div>
     <div class="twrap">
       <div style="background:var(--surface2);padding:12px 16px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Comandos do Bot</div>
@@ -462,11 +462,15 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <div class="toast" id="toast"></div>
 
 <script>
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-const JSONBIN_KEY = "$2a$10$/s4UWuZZrxTnJ6UbzbxTju6P/jitCDCIZvr4XQjlS4xTVrKL1qmGq";
-const JSONBIN_BIN = "69fbf4d9adc21f119a64af4c";
-const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN}`;
-const HEADERS = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"};
+// ── CONFIG (SUPABASE) ─────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://wjgpgmpjfkotzkxmazgf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZ3BnbXBqZmtvdHpreG1hemdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTYzNjEsImV4cCI6MjA5NTM5MjM2MX0.aD7NVdnqUvhnKTOPz72R8zbVylAs7a15Z0Lq032YRsg";
+const SB_HEADERS = {
+  "apikey": SUPABASE_KEY,
+  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Content-Type": "application/json",
+  "Prefer": "return=representation"
+};
 
 const PRODUTOS_PADRAO = [
   {id:"MGA-001", nome:"Mosquiteiro Gigante Aberto",  cod:"MGA-001", qty:0, custo:0, preco:0},
@@ -481,61 +485,72 @@ let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
 let saving = false;
 let lastSaveTime = 0;
 
-// ── JSONBIN ───────────────────────────────────────────────────────────────────
+// ── SUPABASE ──────────────────────────────────────────────────────────────────
+async function sbGet(table, params="") {
+  const url = `${SUPABASE_URL}/rest/v1/${table}${params?"?"+params:""}`;
+  const r = await fetch(url, {headers: SB_HEADERS});
+  return r.ok ? r.json() : [];
+}
+async function sbPost(table, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {method:"POST", headers:SB_HEADERS, body:JSON.stringify(data)});
+  return r.ok ? r.json() : null;
+}
+async function sbPatch(table, id, data) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {method:"PATCH", headers:SB_HEADERS, body:JSON.stringify(data)});
+  return r.ok;
+}
+async function sbDelete(table, id) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {method:"DELETE", headers:SB_HEADERS});
+  return r.ok;
+}
+
 async function lerDados() {
   if(saving) return;
-  // Não sincroniza por 25 segundos após um save
-  if(lastSaveTime > 0 && Date.now() - lastSaveTime < 25000) {
-    setSyncLabel("Sincronizado ✓");
-    return;
-  }
+  setSyncLabel("Sincronizando...");
   try {
-    const r = await fetch(JSONBIN_URL, {headers:{"X-Master-Key":JSONBIN_KEY}});
-    const j = await r.json();
-    const remoto = j.record || {};
-    const tsRemoto = remoto._ts || 0;
-    const tsLocal  = dados._ts  || 0;
-    // Sempre carrega se for primeira vez (tsLocal === 0)
-    // Só bloqueia se local for mais novo que remoto
-    if(tsLocal === 0 || tsRemoto >= tsLocal) {
-      dados = remoto;
-      dados.estoque   = dados.estoque   || [];
-      dados.despesas  = dados.despesas  || [];
-      dados.vendas    = dados.vendas    || [];
-      dados.historico = dados.historico || [];
-      garantirProdutos();
-    }
+    const [estoque, vendas, despesas, historico] = await Promise.all([
+      sbGet("estoque", "order=nome"),
+      sbGet("vendas", "order=data.desc"),
+      sbGet("despesas", "order=data.desc"),
+      sbGet("historico", "order=data.desc&limit=500")
+    ]);
+    dados.estoque   = estoque   || [];
+    dados.vendas    = vendas    || [];
+    dados.despesas  = despesas  || [];
+    dados.historico = historico || [];
+    garantirProdutos();
     setSyncLabel("Sincronizado ✓");
   } catch(e) {
-    try {
-      const backup = localStorage.getItem('finstack_backup');
-      if(backup) { dados = JSON.parse(backup); garantirProdutos(); }
-    } catch(e2) {}
+    console.error("Erro ao carregar dados:", e);
     setSyncLabel("Erro de sync");
   }
 }
 
 async function salvarDados() {
-  dados.estoque.forEach(p => { p.estoque = p.qty; });
-  dados._ts = Date.now();
-  lastSaveTime = Date.now();
   setSyncLabel("Salvando...");
-  // Salva cópia local imediatamente
-  try { localStorage.setItem('finstack_backup', JSON.stringify(dados)); } catch(e) {}
-  let tentativas = 0;
-  while(tentativas < 3) {
-    try {
-      const resp = await fetch(JSONBIN_URL, {method:"PUT", headers:HEADERS, body:JSON.stringify(dados)});
-      if(resp.ok) {
-        setSyncLabel("Salvo ✓");
-        return;
+  saving = true;
+  try {
+    // Salva cada produto do estoque
+    for(const p of dados.estoque) {
+      const {id, ...campos} = p;
+      campos.updated_at = new Date().toISOString();
+      // Verifica se existe
+      const existe = await sbGet("estoque", `id=eq.${id}`);
+      if(existe && existe.length > 0) {
+        await sbPatch("estoque", id, campos);
+      } else {
+        await sbPost("estoque", {id, ...campos});
       }
-    } catch(e) {}
-    tentativas++;
-    await new Promise(r => setTimeout(r, 1000));
+    }
+    setSyncLabel("Salvo ✓");
+  } catch(e) {
+    console.error("Erro ao salvar:", e);
+    setSyncLabel("⚠️ Erro ao salvar!");
+    toast("⚠️ Erro ao salvar! Tente novamente.", true);
+  } finally {
+    saving = false;
+    lastSaveTime = Date.now();
   }
-  setSyncLabel("⚠️ Erro ao salvar!");
-  toast("⚠️ Erro ao salvar! Tente novamente.", true);
 }
 
 function garantirProdutos() {
@@ -595,7 +610,9 @@ async function confirmarEntrada() {
   const p = dados.estoque.find(x=>x.id===id);
   if(!p) return;
   p.qty += qtd;
-  dados.historico.unshift({tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()});
+  const hEntrada = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()};
+  dados.historico.unshift(hEntrada);
+  await sbPost("historico", hEntrada);
   await salvarDados(); renderAll(); closeModal("ov-entrada");
   toast(`✅ +${qtd} unidades de ${p.nome}`);
 }
@@ -617,8 +634,12 @@ async function confirmarVenda() {
   if(p.qty < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
   p.qty -= qtd;
   const total = p.preco * qtd;
-  dados.vendas.push({produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
-  dados.historico.unshift({tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()});
+  const novaVenda = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  const hVenda = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(novaVenda);
+  dados.historico.unshift(hVenda);
+  await sbPost("vendas", novaVenda);
+  await sbPost("historico", hVenda);
   await salvarDados(); renderAll(); closeModal("ov-venda");
   toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
 }
@@ -708,13 +729,16 @@ async function salvarDesp() {
   const desc  = document.getElementById("desp-desc").value.trim();
   const cat   = document.getElementById("desp-cat").value;
   if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
-  dados.despesas.unshift({id:Date.now(), valor, desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()});
-  await await salvarDados(); renderFinanceiro(); closeModal("ov-desp");
+  const novaDesp = {valor, descricao:desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()};
+  const despSalva = await sbPost("despesas", novaDesp);
+  if(despSalva) { const d = Array.isArray(despSalva)?despSalva[0]:despSalva; dados.despesas.unshift(d); }
+  renderFinanceiro(); closeModal("ov-desp");
   toast("✅ Despesa registrada!");
 }
 async function removerDesp(id) {
+  await sbDelete("despesas", id);
   dados.despesas = dados.despesas.filter(d=>d.id!==id);
-  await salvarDados(); renderFinanceiro();
+  renderFinanceiro();
   toast("🗑 Despesa removida");
 }
 
@@ -786,15 +810,12 @@ async function altQty(id, delta) {
     reg.preco_unitario = p.preco;
     reg.total = p.preco * Math.abs(delta);
     reg.pgto = "Não informado";
-    dados.vendas.push({
-      produto_id:p.id, produto_nome:p.nome,
-      qtd:Math.abs(delta), preco_unitario:p.preco,
-      total:p.preco*Math.abs(delta),
-      pgto:"Não informado",
-      data:new Date().toISOString(), mes:mesAtual()
-    });
+    const vRapida = {produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), preco_unitario:p.preco, total:p.preco*Math.abs(delta), pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
+    dados.vendas.push(vRapida);
+    await sbPost("vendas", vRapida);
   }
   dados.historico.unshift(reg);
+  await sbPost("historico", reg);
   await salvarDados(); renderEstoque();
   if(delta < 0) toast(`🛒 Venda registrada: ${Math.abs(delta)}x ${p.nome}`);
 }
@@ -1097,7 +1118,7 @@ async function confirmarDevolucao() {
   const reembolso = p.preco * qtd;
 
   // Registra no historico
-  dados.historico.unshift({
+  const hDev = {
     tipo: "devolucao",
     produto_id: p.id,
     produto_nome: p.nome,
@@ -1105,7 +1126,9 @@ async function confirmarDevolucao() {
     motivo,
     data: new Date().toISOString(),
     mes: mesAtual()
-  });
+  };
+  dados.historico.unshift(hDev);
+  await sbPost("historico", hDev);
 
   // Registra como despesa (reembolso)
   dados.despesas.unshift({
@@ -1253,12 +1276,12 @@ async function confirmarVendaRapida() {
   p.estoque = p.qty;
   
   const receita = p.preco * qtd;
-  dados.vendas.push({produto_id:p.id, produto_nome:p.nome,
-    qtd, preco_unitario:p.preco, total:receita, pgto,
-    data:new Date().toISOString(), mes:mesAtual()});
-  dados.historico.unshift({tipo:"venda", produto_id:p.id,
-    produto_nome:p.nome, qtd, total:receita, pgto,
-    data:new Date().toISOString(), mes:mesAtual()});
+  const vRapida2 = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total:receita, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  const hRapida2 = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total:receita, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(vRapida2);
+  dados.historico.unshift(hRapida2);
+  await sbPost("vendas", vRapida2);
+  await sbPost("historico", hRapida2);
   
   await salvarDados(); renderAll(); closeModal("ov-venda-rapida");
   toast("🛒 Venda: " + qtd + "x " + p.nome + " — " + R(receita));
