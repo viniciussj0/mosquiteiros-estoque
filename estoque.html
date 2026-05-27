@@ -462,7 +462,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <div class="toast" id="toast"></div>
 
 <script>
-// ── CONFIG (SUPABASE) ─────────────────────────────────────────────────────────
+// ── CONFIG ────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://wjgpgmpjfkotzkxmazgf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZ3BnbXBqZmtvdHpreG1hemdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTYzNjEsImV4cCI6MjA5NTM5MjM2MX0.aD7NVdnqUvhnKTOPz72R8zbVylAs7a15Z0Lq032YRsg";
 const SB_HEADERS = {
@@ -485,7 +485,7 @@ let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
 let saving = false;
 let lastSaveTime = 0;
 
-// ── SUPABASE ──────────────────────────────────────────────────────────────────
+// ── SUPABASE HELPERS ─────────────────────────────────────────────────────────
 async function sbGet(table, params="") {
   const url = `${SUPABASE_URL}/rest/v1/${table}${params?"?"+params:""}`;
   const r = await fetch(url, {headers: SB_HEADERS});
@@ -496,12 +496,27 @@ async function sbPost(table, data) {
   return r.ok ? r.json() : null;
 }
 async function sbPatch(table, id, data) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {method:"PATCH", headers:SB_HEADERS, body:JSON.stringify(data)});
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {method:"PATCH", headers:SB_HEADERS, body:JSON.stringify(data)});
   return r.ok;
 }
 async function sbDelete(table, id) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {method:"DELETE", headers:SB_HEADERS});
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {method:"DELETE", headers:SB_HEADERS});
   return r.ok;
+}
+
+// Salva um produto específico no Supabase (cores incluídas)
+async function salvarProduto(p) {
+  const cores = Array.isArray(p.cores) ? p.cores : [];
+  return sbPatch("estoque", p.id, {
+    cod: p.cod || p.id,
+    nome: p.nome,
+    qty: p.qty || 0,
+    custo: p.custo || 0,
+    preco: p.preco || 0,
+    cores: cores,
+    foto: p.foto || "",
+    updated_at: new Date().toISOString()
+  });
 }
 
 async function lerDados() {
@@ -518,6 +533,12 @@ async function lerDados() {
     dados.vendas    = vendas    || [];
     dados.despesas  = despesas  || [];
     dados.historico = historico || [];
+    dados.estoque.forEach(p => {
+      if(typeof p.cores === "string") { try { p.cores = JSON.parse(p.cores); } catch(e) { p.cores = []; } }
+      if(!Array.isArray(p.cores)) p.cores = [];
+      if(p.qty === undefined && p.estoque !== undefined) p.qty = Number(p.estoque);
+      if(p.cod === undefined) p.cod = p.id;
+    });
     garantirProdutos();
     setSyncLabel("Sincronizado ✓");
   } catch(e) {
@@ -530,18 +551,7 @@ async function salvarDados() {
   setSyncLabel("Salvando...");
   saving = true;
   try {
-    // Salva cada produto do estoque
-    for(const p of dados.estoque) {
-      const {id, ...campos} = p;
-      campos.updated_at = new Date().toISOString();
-      // Verifica se existe
-      const existe = await sbGet("estoque", `id=eq.${id}`);
-      if(existe && existe.length > 0) {
-        await sbPatch("estoque", id, campos);
-      } else {
-        await sbPost("estoque", {id, ...campos});
-      }
-    }
+    await Promise.all(dados.estoque.map(p => salvarProduto(p)));
     setSyncLabel("Salvo ✓");
   } catch(e) {
     console.error("Erro ao salvar:", e);
@@ -554,11 +564,11 @@ async function salvarDados() {
 }
 
 function garantirProdutos() {
-  // Compatibilidade: bot usa "estoque", site usa "qty"
   dados.estoque.forEach(p => {
-    if(p.qty === undefined && p.estoque !== undefined) p.qty = p.estoque;
+    if(p.qty === undefined && p.estoque !== undefined) p.qty = Number(p.estoque);
     if(p.estoque === undefined && p.qty !== undefined) p.estoque = p.qty;
     if(p.cod === undefined) p.cod = p.id;
+    if(!Array.isArray(p.cores)) p.cores = [];
   });
   // Só adiciona produtos padrão se o estoque estiver completamente vazio
   // (primeira vez que o sistema é usado)
@@ -610,10 +620,10 @@ async function confirmarEntrada() {
   const p = dados.estoque.find(x=>x.id===id);
   if(!p) return;
   p.qty += qtd;
-  const hEntrada = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()};
-  dados.historico.unshift(hEntrada);
-  await sbPost("historico", hEntrada);
-  await salvarDados(); renderAll(); closeModal("ov-entrada");
+  const _hEnt = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()};
+  dados.historico.unshift(_hEnt);
+  await Promise.all([sbPost("historico", _hEnt), salvarProduto(p)]);
+  renderAll(); closeModal("ov-entrada");
   toast(`✅ +${qtd} unidades de ${p.nome}`);
 }
 
@@ -634,13 +644,11 @@ async function confirmarVenda() {
   if(p.qty < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
   p.qty -= qtd;
   const total = p.preco * qtd;
-  const novaVenda = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
-  const hVenda = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
-  dados.vendas.push(novaVenda);
-  dados.historico.unshift(hVenda);
-  await sbPost("vendas", novaVenda);
-  await sbPost("historico", hVenda);
-  await salvarDados(); renderAll(); closeModal("ov-venda");
+  const _vV = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  const _hV = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(_vV); dados.historico.unshift(_hV);
+  await Promise.all([sbPost("vendas", _vV), sbPost("historico", _hV), salvarProduto(p)]);
+  renderAll(); closeModal("ov-venda");
   toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
 }
 
@@ -715,7 +723,7 @@ async function salvarEdicao() {
   if(p.cores && p.cores.length > 0) {
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   }
-  await await salvarDados(); renderAll(); closeModal("ov-edit");
+  await salvarProduto(p); renderAll(); closeModal("ov-edit");
   toast("✅ Produto atualizado!");
 }
 
@@ -729,9 +737,9 @@ async function salvarDesp() {
   const desc  = document.getElementById("desp-desc").value.trim();
   const cat   = document.getElementById("desp-cat").value;
   if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
-  const novaDesp = {valor, descricao:desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()};
-  const despSalva = await sbPost("despesas", novaDesp);
-  if(despSalva) { const d = Array.isArray(despSalva)?despSalva[0]:despSalva; dados.despesas.unshift(d); }
+  const _dNova = {valor, descricao:desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()};
+  const _dSalva = await sbPost("despesas", _dNova);
+  if(_dSalva) { const d = Array.isArray(_dSalva)?_dSalva[0]:_dSalva; dados.despesas.unshift(d); }
   renderFinanceiro(); closeModal("ov-desp");
   toast("✅ Despesa registrada!");
 }
@@ -810,13 +818,17 @@ async function altQty(id, delta) {
     reg.preco_unitario = p.preco;
     reg.total = p.preco * Math.abs(delta);
     reg.pgto = "Não informado";
-    const vRapida = {produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), preco_unitario:p.preco, total:p.preco*Math.abs(delta), pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
-    dados.vendas.push(vRapida);
-    await sbPost("vendas", vRapida);
+    dados.vendas.push({
+      produto_id:p.id, produto_nome:p.nome,
+      qtd:Math.abs(delta), preco_unitario:p.preco,
+      total:p.preco*Math.abs(delta),
+      pgto:"Não informado",
+      data:new Date().toISOString(), mes:mesAtual()
+    });
   }
   dados.historico.unshift(reg);
-  await sbPost("historico", reg);
-  await salvarDados(); renderEstoque();
+  await Promise.all([sbPost("historico", reg), salvarProduto(p)]);
+  renderEstoque();
   if(delta < 0) toast(`🛒 Venda registrada: ${Math.abs(delta)}x ${p.nome}`);
 }
 function filterTable() { renderEstoque(); }
@@ -1118,7 +1130,7 @@ async function confirmarDevolucao() {
   const reembolso = p.preco * qtd;
 
   // Registra no historico
-  const hDev = {
+  dados.historico.unshift({
     tipo: "devolucao",
     produto_id: p.id,
     produto_nome: p.nome,
@@ -1126,9 +1138,7 @@ async function confirmarDevolucao() {
     motivo,
     data: new Date().toISOString(),
     mes: mesAtual()
-  };
-  dados.historico.unshift(hDev);
-  await sbPost("historico", hDev);
+  });
 
   // Registra como despesa (reembolso)
   dados.despesas.unshift({
@@ -1141,7 +1151,7 @@ async function confirmarDevolucao() {
     mes: mesAtual()
   });
 
-  await salvarDados(); renderAll(); closeModal("ov-devolucao");
+  await salvarProduto(p); renderAll(); closeModal("ov-devolucao");
   toast("↩️ Devolução registrada: " + qtd + "x " + p.nome);
 }
 
@@ -1150,7 +1160,8 @@ async function deletarProduto() {
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
   dados.estoque = dados.estoque.filter(x=>x.id!==id);
-  await await salvarDados(); renderAll(); closeModal("ov-edit");
+  await sbDelete("estoque", id);
+  renderAll(); closeModal("ov-edit");
   toast("🗑 Produto excluído: " + p.nome);
 }
 
@@ -1165,11 +1176,13 @@ async function salvarNovoProduto() {
   // Check duplicate
   if(dados.estoque.find(p=>p.id===cod||p.cod===cod)) { toast("Código já existe!", true); return; }
   dados.estoque.push({id:cod, cod:cod, nome, custo, preco, qty, estoque:qty, cores:[]});
+  await sbPost("estoque", {id:cod, cod:cod, nome, custo, preco, qty, cores:[], foto:""});
   if(qty > 0) {
-    dados.historico.unshift({tipo:"entrada", produto_id:cod, produto_nome:nome, qtd:qty,
-      obs:"Cadastro inicial", data:new Date().toISOString(), mes:mesAtual()});
+    const _hNovo = {tipo:"entrada", produto_id:cod, produto_nome:nome, qtd:qty, obs:"Cadastro inicial", data:new Date().toISOString(), mes:mesAtual()};
+    dados.historico.unshift(_hNovo);
+    await sbPost("historico", _hNovo);
   }
-  await salvarDados(); renderAll(); closeModal("ov-novo-produto");
+  renderAll(); closeModal("ov-novo-produto");
   // Clear form
   ["np-nome","np-cod","np-custo","np-preco","np-qty"].forEach(id=>{
     document.getElementById(id).value = id.includes("custo")||id.includes("preco")?"0":id.includes("qty")?"0":"";
@@ -1224,7 +1237,7 @@ async function confirmarCorRapida(tipo) {
 
   p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   p.estoque = p.qty;
-  await salvarDados(); renderAll(); closeModal("ov-cor-rapida");
+  await salvarProduto(p); renderAll(); closeModal("ov-cor-rapida");
 }
 
 async function vendaCorRapida(prodId, corIdx) {
@@ -1235,7 +1248,7 @@ async function vendaCorRapida(prodId, corIdx) {
   cor.qty -= 1;
   p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   p.estoque = p.qty;
-  await salvarDados();
+  await salvarProduto(p);
   renderEstoque();
   toast("−1 " + cor.nome + " · Estoque: " + cor.qty);
 }
@@ -1276,14 +1289,14 @@ async function confirmarVendaRapida() {
   p.estoque = p.qty;
   
   const receita = p.preco * qtd;
-  const vRapida2 = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total:receita, pgto, data:new Date().toISOString(), mes:mesAtual()};
-  const hRapida2 = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total:receita, pgto, data:new Date().toISOString(), mes:mesAtual()};
-  dados.vendas.push(vRapida2);
-  dados.historico.unshift(hRapida2);
-  await sbPost("vendas", vRapida2);
-  await sbPost("historico", hRapida2);
+  dados.vendas.push({produto_id:p.id, produto_nome:p.nome,
+    qtd, preco_unitario:p.preco, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
+  dados.historico.unshift({tipo:"venda", produto_id:p.id,
+    produto_nome:p.nome, qtd, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
   
-  await salvarDados(); renderAll(); closeModal("ov-venda-rapida");
+  renderAll(); closeModal("ov-venda-rapida");
   toast("🛒 Venda: " + qtd + "x " + p.nome + " — " + R(receita));
 }
 
@@ -1327,7 +1340,7 @@ async function salvarImagem() {
   const url = document.getElementById("img-url").value || document.getElementById("img-preview").src;
   const p   = dados.estoque.find(x=>x.id===id); if(!p) return;
   p.foto = url;
-  await salvarDados(); renderAll(); closeModal("ov-imagem");
+  await salvarProduto(p); renderAll(); closeModal("ov-imagem");
   toast("📷 Foto salva!");
 }
 
@@ -1335,7 +1348,7 @@ async function removerImagem() {
   const id = document.getElementById("img-produto-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   p.foto = "";
-  await salvarDados(); renderAll(); closeModal("ov-imagem");
+  await salvarProduto(p); renderAll(); closeModal("ov-imagem");
   toast("🗑 Foto removida");
 }
 
