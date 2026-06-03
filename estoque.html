@@ -708,12 +708,38 @@ function removerCor(idx) {
   coresTemp.splice(idx, 1);
   renderVarList(coresTemp);
 }
+function tarifaFixaShopee(preco) {
+  if(preco <= 79.99) return 4;
+  if(preco <= 99.99) return 16;
+  if(preco <= 199.99) return 20;
+  if(preco <= 499.99) return 26;
+  return 26;
+}
 function calcEditMargem() {
   const c = parseFloat(document.getElementById("edit-custo").value)||0;
   const v = parseFloat(document.getElementById("edit-preco").value)||0;
   const el = document.getElementById("edit-margem-prev");
   if(c>0 && v>0) { const m=((v-c)/v*100); el.textContent=`Margem: ${m.toFixed(1)}% | Lucro unit.: ${R(v-c)}`; el.style.color=m>30?"var(--accent2)":m>15?"var(--warn)":"var(--danger)"; }
   else el.textContent="";
+  // Calculadora Shopee
+  const calc = document.getElementById("shopee-calc");
+  if(v > 0) {
+    calc.style.display = "block";
+    const comissao = v * 0.20;
+    const tarifa = tarifaFixaShopee(v);
+    const lucro = v - comissao - tarifa - c;
+    const margem = (lucro / v * 100);
+    document.getElementById("sh-preco").textContent = R(v);
+    document.getElementById("sh-comissao").textContent = "− " + R(comissao);
+    document.getElementById("sh-tarifa").textContent = "− " + R(tarifa);
+    document.getElementById("sh-custo").textContent = "− " + R(c);
+    document.getElementById("sh-lucro").textContent = R(lucro);
+    document.getElementById("sh-lucro").style.color = lucro >= 0 ? "var(--accent2)" : "var(--danger)";
+    document.getElementById("sh-margem").textContent = margem.toFixed(1) + "%";
+    document.getElementById("sh-margem").style.color = margem >= 20 ? "var(--accent2)" : margem >= 10 ? "var(--warn)" : "var(--danger)";
+  } else {
+    calc.style.display = "none";
+  }
 }
 async function salvarEdicao() {
   const id = document.getElementById("edit-id").value;
