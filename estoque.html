@@ -297,12 +297,60 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">💰 Custos Adicionais por Unidade</div>
       <div class="two">
-        <div class="mrow"><label>📦 Embalagem (R$)</label><input type="number" id="edit-custo-embalagem" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
-        <div class="mrow"><label>📢 ADS / Marketing (R$)</label><input type="number" id="edit-custo-ads" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+        <div class="mrow">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>📦 Embalagem</span>
+            <span style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:10px">
+              <button type="button" id="btn-emb-rs" onclick="setTipo('embalagem','rs')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--accent);color:#fff;font-size:10px">R$</button>
+              <button type="button" id="btn-emb-pct" onclick="setTipo('embalagem','pct')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--surface);color:var(--text2);font-size:10px">%</button>
+            </span>
+          </label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="edit-custo-embalagem" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <span id="lbl-embalagem" style="font-size:12px;color:var(--text2);min-width:20px">R$</span>
+          </div>
+        </div>
+        <div class="mrow">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>📢 ADS / Marketing</span>
+            <span style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:10px">
+              <button type="button" id="btn-ads-rs" onclick="setTipo('ads','rs')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--accent);color:#fff;font-size:10px">R$</button>
+              <button type="button" id="btn-ads-pct" onclick="setTipo('ads','pct')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--surface);color:var(--text2);font-size:10px">%</button>
+            </span>
+          </label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="edit-custo-ads" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <span id="lbl-ads" style="font-size:12px;color:var(--text2);min-width:20px">R$</span>
+          </div>
+        </div>
       </div>
       <div class="two">
-        <div class="mrow"><label>🚚 Frete (R$)</label><input type="number" id="edit-custo-frete" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
-        <div class="mrow"><label>➕ Outros (R$)</label><input type="number" id="edit-custo-outros" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+        <div class="mrow">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>🚚 Frete</span>
+            <span style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:10px">
+              <button type="button" id="btn-frete-rs" onclick="setTipo('frete','rs')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--accent);color:#fff;font-size:10px">R$</button>
+              <button type="button" id="btn-frete-pct" onclick="setTipo('frete','pct')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--surface);color:var(--text2);font-size:10px">%</button>
+            </span>
+          </label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="edit-custo-frete" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <span id="lbl-frete" style="font-size:12px;color:var(--text2);min-width:20px">R$</span>
+          </div>
+        </div>
+        <div class="mrow">
+          <label style="display:flex;justify-content:space-between;align-items:center">
+            <span>➕ Outros</span>
+            <span style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-size:10px">
+              <button type="button" id="btn-outros-rs" onclick="setTipo('outros','rs')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--accent);color:#fff;font-size:10px">R$</button>
+              <button type="button" id="btn-outros-pct" onclick="setTipo('outros','pct')" style="padding:2px 6px;border:none;cursor:pointer;background:var(--surface);color:var(--text2);font-size:10px">%</button>
+            </span>
+          </label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="edit-custo-outros" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <span id="lbl-outros" style="font-size:12px;color:var(--text2);min-width:20px">R$</span>
+          </div>
+        </div>
       </div>
     </div>
     <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
@@ -739,6 +787,30 @@ function removerCor(idx) {
   coresTemp.splice(idx, 1);
   renderVarList(coresTemp);
 }
+// Tipos dos campos (rs ou pct)
+const tiposCusto = {embalagem:'rs', ads:'rs', frete:'rs', outros:'rs'};
+
+function setTipo(campo, tipo) {
+  tiposCusto[campo] = tipo;
+  // Atualiza visual dos botões
+  const btnRs  = document.getElementById(`btn-${campo}-rs`);
+  const btnPct = document.getElementById(`btn-${campo}-pct`);
+  const lbl    = document.getElementById(`lbl-${campo}`);
+  if(btnRs && btnPct && lbl) {
+    btnRs.style.background  = tipo==='rs'  ? 'var(--accent)' : 'var(--surface)';
+    btnRs.style.color       = tipo==='rs'  ? '#fff' : 'var(--text2)';
+    btnPct.style.background = tipo==='pct' ? 'var(--accent)' : 'var(--surface)';
+    btnPct.style.color      = tipo==='pct' ? '#fff' : 'var(--text2)';
+    lbl.textContent         = tipo==='rs'  ? 'R$' : '%';
+  }
+  calcEditMargem();
+}
+
+function custoEmReais(campo, preco) {
+  const val = parseFloat(document.getElementById(`edit-custo-${campo}`)?.value)||0;
+  return tiposCusto[campo]==='pct' ? (preco * val / 100) : val;
+}
+
 function tarifaFixaShopee(preco) {
   if(preco <= 79.99) return 4;
   if(preco <= 99.99) return 16;
@@ -749,10 +821,10 @@ function tarifaFixaShopee(preco) {
 function calcEditMargem() {
   const c        = parseFloat(document.getElementById("edit-custo").value)||0;
   const v        = parseFloat(document.getElementById("edit-preco").value)||0;
-  const embal    = parseFloat(document.getElementById("edit-custo-embalagem")?.value)||0;
-  const ads      = parseFloat(document.getElementById("edit-custo-ads")?.value)||0;
-  const frete    = parseFloat(document.getElementById("edit-custo-frete")?.value)||0;
-  const outros   = parseFloat(document.getElementById("edit-custo-outros")?.value)||0;
+  const embal    = custoEmReais('embalagem', v);
+  const ads      = custoEmReais('ads', v);
+  const frete    = custoEmReais('frete', v);
+  const outros   = custoEmReais('outros', v);
   const custoTotal = c + embal + ads + frete + outros;
   const el = document.getElementById("edit-margem-prev");
   if(v > 0) {
