@@ -1218,8 +1218,11 @@ async function deletarProduto() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
+  // Remove do array local primeiro
   dados.estoque = dados.estoque.filter(x=>x.id!==id);
-  await sbDelete("estoque", id);
+  // Delete no Supabase usando SDK (suporta IDs com hífen nativamente)
+  const {error} = await _sb.from("estoque").delete().eq("id", id);
+  if(error) { console.error("Erro ao deletar produto:", error); toast("⚠️ Erro ao excluir!", true); return; }
   renderAll(); closeModal("ov-edit");
   toast("🗑 Produto excluído: " + p.nome);
 }
