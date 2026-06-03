@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinStack — Gestão de Estoque & Financeiro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -462,15 +463,10 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <div class="toast" id="toast"></div>
 
 <script>
-// ── CONFIG ────────────────────────────────────────────────────────────────────
+// ── CONFIG (SUPABASE SDK) ─────────────────────────────────────────────────────
 const SUPABASE_URL = "https://wjgpgmpjfkotzkxmazgf.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZ3BnbXBqZmtvdHpreG1hemdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTYzNjEsImV4cCI6MjA5NTM5MjM2MX0.aD7NVdnqUvhnKTOPz72R8zbVylAs7a15Z0Lq032YRsg";
-const SB_HEADERS = {
-  "apikey": SUPABASE_KEY,
-  "Authorization": `Bearer ${SUPABASE_KEY}`,
-  "Content-Type": "application/json",
-  "Prefer": "return=representation"
-};
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PRODUTOS_PADRAO = [
   {id:"MGA-001", nome:"Mosquiteiro Gigante Aberto",  cod:"MGA-001", qty:0, custo:0, preco:0},
@@ -485,23 +481,30 @@ let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
 let saving = false;
 let lastSaveTime = 0;
 
-// ── SUPABASE HELPERS ─────────────────────────────────────────────────────────
-async function sbGet(table, params="") {
-  const url = `${SUPABASE_URL}/rest/v1/${table}${params?"?"+params:""}`;
-  const r = await fetch(url, {headers: SB_HEADERS});
-  return r.ok ? r.json() : [];
+// ── SUPABASE HELPERS (SDK) ───────────────────────────────────────────────────
+async function sbGet(table, paramsStr="") {
+  let q = _sb.from(table).select("*");
+  if(paramsStr.includes("order=nome")) q = q.order("nome");
+  else if(paramsStr.includes("order=data.desc")) q = q.order("data", {ascending:false});
+  if(paramsStr.includes("limit=500")) q = q.limit(500);
+  const {data, error} = await q;
+  if(error) { console.error("sbGet error:", error); return []; }
+  return data || [];
 }
 async function sbPost(table, data) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {method:"POST", headers:SB_HEADERS, body:JSON.stringify(data)});
-  return r.ok ? r.json() : null;
+  const {data:res, error} = await _sb.from(table).insert(data).select();
+  if(error) { console.error("sbPost error:", error); return null; }
+  return res;
 }
 async function sbPatch(table, id, data) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {method:"PATCH", headers:SB_HEADERS, body:JSON.stringify(data)});
-  return r.ok;
+  const {error} = await _sb.from(table).update(data).eq("id", id);
+  if(error) { console.error("sbPatch error:", error); return false; }
+  return true;
 }
 async function sbDelete(table, id) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {method:"DELETE", headers:SB_HEADERS});
-  return r.ok;
+  const {error} = await _sb.from(table).delete().eq("id", id);
+  if(error) { console.error("sbDelete error:", error); return false; }
+  return true;
 }
 
 // Salva um produto específico no Supabase (cores incluídas)
