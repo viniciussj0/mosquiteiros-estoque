@@ -291,8 +291,19 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     <input type="hidden" id="edit-id">
     <div class="mrow"><label>Nome</label><input type="text" id="edit-nome"></div>
     <div class="two">
-      <div class="mrow"><label>Custo Unit. (R$)</label><input type="number" id="edit-custo" step="0.01"></div>
-      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="edit-preco" step="0.01"></div>
+      <div class="mrow"><label>Custo Produto (R$)</label><input type="number" id="edit-custo" step="0.01" oninput="calcEditMargem()"></div>
+      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="edit-preco" step="0.01" oninput="calcEditMargem()"></div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">💰 Custos Adicionais por Unidade</div>
+      <div class="two">
+        <div class="mrow"><label>📦 Embalagem (R$)</label><input type="number" id="edit-custo-embalagem" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+        <div class="mrow"><label>📢 ADS / Marketing (R$)</label><input type="number" id="edit-custo-ads" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+      </div>
+      <div class="two">
+        <div class="mrow"><label>🚚 Frete (R$)</label><input type="number" id="edit-custo-frete" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+        <div class="mrow"><label>➕ Outros (R$)</label><input type="number" id="edit-custo-outros" step="0.01" value="0" min="0" oninput="calcEditMargem()"></div>
+      </div>
     </div>
     <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
 
@@ -516,6 +527,10 @@ async function salvarProduto(p) {
     qty: p.qty || 0,
     custo: p.custo || 0,
     preco: p.preco || 0,
+    custo_embalagem: p.custo_embalagem || 0,
+    custo_ads: p.custo_ads || 0,
+    custo_frete: p.custo_frete || 0,
+    custo_outros: p.custo_outros || 0,
     cores: cores,
     foto: p.foto || "",
     updated_at: new Date().toISOString()
@@ -659,8 +674,12 @@ function openEdit(id) {
   const p = dados.estoque.find(x=>x.id===id); if(!p) return;
   document.getElementById("edit-id").value = id;
   document.getElementById("edit-nome").value = p.nome;
-  document.getElementById("edit-custo").value = p.custo;
-  document.getElementById("edit-preco").value = p.preco;
+  document.getElementById("edit-custo").value = p.custo || 0;
+  document.getElementById("edit-preco").value = p.preco || 0;
+  document.getElementById("edit-custo-embalagem").value = p.custo_embalagem || 0;
+  document.getElementById("edit-custo-ads").value = p.custo_ads || 0;
+  document.getElementById("edit-custo-frete").value = p.custo_frete || 0;
+  document.getElementById("edit-custo-outros").value = p.custo_outros || 0;
   calcEditMargem();
   coresTemp = JSON.parse(JSON.stringify(p.cores || []));
   renderVarList(coresTemp);
@@ -716,27 +735,35 @@ function tarifaFixaShopee(preco) {
   return 26;
 }
 function calcEditMargem() {
-  const c = parseFloat(document.getElementById("edit-custo").value)||0;
-  const v = parseFloat(document.getElementById("edit-preco").value)||0;
+  const c        = parseFloat(document.getElementById("edit-custo").value)||0;
+  const v        = parseFloat(document.getElementById("edit-preco").value)||0;
+  const embal    = parseFloat(document.getElementById("edit-custo-embalagem")?.value)||0;
+  const ads      = parseFloat(document.getElementById("edit-custo-ads")?.value)||0;
+  const frete    = parseFloat(document.getElementById("edit-custo-frete")?.value)||0;
+  const outros   = parseFloat(document.getElementById("edit-custo-outros")?.value)||0;
+  const custoTotal = c + embal + ads + frete + outros;
   const el = document.getElementById("edit-margem-prev");
-  if(c>0 && v>0) { const m=((v-c)/v*100); el.textContent=`Margem: ${m.toFixed(1)}% | Lucro unit.: ${R(v-c)}`; el.style.color=m>30?"var(--accent2)":m>15?"var(--warn)":"var(--danger)"; }
-  else el.textContent="";
+  if(v > 0) {
+    const m = ((v - custoTotal) / v * 100);
+    el.textContent = `Custo total: ${R(custoTotal)} | Margem bruta: ${m.toFixed(1)}% | Lucro: ${R(v - custoTotal)}`;
+    el.style.color = m > 30 ? "var(--accent2)" : m > 15 ? "var(--warn)" : "var(--danger)";
+  } else el.textContent = "";
   // Calculadora Shopee
   const calc = document.getElementById("shopee-calc");
   if(v > 0) {
     calc.style.display = "block";
     const comissao = v * 0.20;
-    const tarifa = tarifaFixaShopee(v);
-    const lucro = v - comissao - tarifa - c;
-    const margem = (lucro / v * 100);
-    document.getElementById("sh-preco").textContent = R(v);
-    document.getElementById("sh-comissao").textContent = "− " + R(comissao);
-    document.getElementById("sh-tarifa").textContent = "− " + R(tarifa);
-    document.getElementById("sh-custo").textContent = "− " + R(c);
-    document.getElementById("sh-lucro").textContent = R(lucro);
-    document.getElementById("sh-lucro").style.color = lucro >= 0 ? "var(--accent2)" : "var(--danger)";
-    document.getElementById("sh-margem").textContent = margem.toFixed(1) + "%";
-    document.getElementById("sh-margem").style.color = margem >= 20 ? "var(--accent2)" : margem >= 10 ? "var(--warn)" : "var(--danger)";
+    const tarifa   = tarifaFixaShopee(v);
+    const lucro    = v - comissao - tarifa - custoTotal;
+    const margem   = (lucro / v * 100);
+    document.getElementById("sh-preco").textContent     = R(v);
+    document.getElementById("sh-comissao").textContent  = "− " + R(comissao);
+    document.getElementById("sh-tarifa").textContent    = "− " + R(tarifa);
+    document.getElementById("sh-custo").textContent     = "− " + R(custoTotal);
+    document.getElementById("sh-lucro").textContent     = R(lucro);
+    document.getElementById("sh-lucro").style.color     = lucro >= 0 ? "var(--accent2)" : "var(--danger)";
+    document.getElementById("sh-margem").textContent    = margem.toFixed(1) + "%";
+    document.getElementById("sh-margem").style.color    = margem >= 20 ? "var(--accent2)" : margem >= 10 ? "var(--warn)" : "var(--danger)";
   } else {
     calc.style.display = "none";
   }
@@ -744,10 +771,13 @@ function calcEditMargem() {
 async function salvarEdicao() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
-  p.nome  = document.getElementById("edit-nome").value;
-  p.custo = parseFloat(document.getElementById("edit-custo").value)||0;
-  p.preco = parseFloat(document.getElementById("edit-preco").value)||0;
-  // Se tem cores, qty = soma das cores
+  p.nome            = document.getElementById("edit-nome").value;
+  p.custo           = parseFloat(document.getElementById("edit-custo").value)||0;
+  p.preco           = parseFloat(document.getElementById("edit-preco").value)||0;
+  p.custo_embalagem = parseFloat(document.getElementById("edit-custo-embalagem").value)||0;
+  p.custo_ads       = parseFloat(document.getElementById("edit-custo-ads").value)||0;
+  p.custo_frete     = parseFloat(document.getElementById("edit-custo-frete").value)||0;
+  p.custo_outros    = parseFloat(document.getElementById("edit-custo-outros").value)||0;
   p.cores = coresTemp;
   if(p.cores && p.cores.length > 0) {
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
