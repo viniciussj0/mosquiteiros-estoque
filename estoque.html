@@ -152,14 +152,14 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   <div class="sec-hd" style="flex-wrap:wrap;gap:10px">
     <span class="sec-title">Histórico de Movimentações</span>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <select id="hist-filtro" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+      <select id="hist-filtro" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
         <option value="todos">Todos os tipos</option>
-        <option value="entrada">📥 Entradas</option>
-        <option value="saida">📤 Saídas</option>
-        <option value="venda">🛒 Vendas</option>
+        <option value="entrada">📥 Adicionados</option>
+        <option value="venda">📤 Removidos / Vendas</option>
         <option value="devolucao">↩️ Devoluções</option>
+        <option value="estorno">🔄 Estornos</option>
       </select>
-      <select id="hist-mes" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+      <select id="hist-mes" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
         <option value="">Todos os meses</option>
       </select>
       <input type="date" id="hist-data-ini" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data inicial">
@@ -171,6 +171,30 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   </div>
   <div class="twrap">
     <div style="padding:1rem" id="hist-list"></div>
+  </div>
+</div>
+
+<!-- MODAL ESTORNO -->
+<div class="overlay" id="ov-estorno">
+  <div class="modal" style="width:420px">
+    <h2>🔄 Estornar Movimentação</h2>
+    <input type="hidden" id="est-hist-id">
+    <input type="hidden" id="est-produto-id">
+    <input type="hidden" id="est-tipo">
+    <div id="est-info" style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="mrow">
+      <label>Quantidade a estornar</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="qty-btn" onclick="ajustarEstorno(-1)" style="width:36px;height:36px;font-size:18px">−</button>
+        <input type="number" id="est-qtd" value="1" min="1" style="text-align:center;font-size:16px;font-weight:700">
+        <button class="qty-btn" onclick="ajustarEstorno(1)" style="width:36px;height:36px;font-size:18px">+</button>
+      </div>
+    </div>
+    <div id="est-preview" style="font-size:12px;color:var(--text2);margin-bottom:8px"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-estorno')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEstorno()">🔄 Confirmar Estorno</button>
+    </div>
   </div>
 </div>
 
@@ -1335,19 +1359,17 @@ async function confirmarCorRapida(tipo) {
   if(tipo === "remover") {
     if(cor.qty < qtd) { toast("Estoque insuficiente! Disponivel: " + cor.qty, true); return; }
     cor.qty -= qtd;
-    // Registra como venda
-    dados.vendas.push({produto_id:p.id, produto_nome:p.nome + " (" + cor.nome + ")",
-      qtd, preco_unitario:p.preco, total:p.preco*qtd, pgto:"Nao informado",
-      data:new Date().toISOString(), mes:mesAtual()});
-    dados.historico.unshift({tipo:"venda", produto_id:p.id,
-      produto_nome:p.nome + " (" + cor.nome + ")", qtd, total:p.preco*qtd,
-      data:new Date().toISOString(), mes:mesAtual()});
+    const venda = {produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, preco_unitario:p.preco, total:p.preco*qtd, pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
+    const hist  = {tipo:"venda", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, total:p.preco*qtd, data:new Date().toISOString(), mes:mesAtual()};
+    dados.vendas.push(venda);
+    dados.historico.unshift(hist);
+    await Promise.all([sbPost("vendas", venda), sbPost("historico", hist)]);
     toast("🛒 -" + qtd + " " + cor.nome);
   } else {
     cor.qty += qtd;
-    dados.historico.unshift({tipo:"entrada", produto_id:p.id,
-      produto_nome:p.nome + " (" + cor.nome + ")", qtd,
-      data:new Date().toISOString(), mes:mesAtual()});
+    const hist = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, data:new Date().toISOString(), mes:mesAtual()};
+    dados.historico.unshift(hist);
+    await sbPost("historico", hist);
     toast("📥 +" + qtd + " " + cor.nome);
   }
 
@@ -1360,11 +1382,14 @@ async function vendaCorRapida(prodId, corIdx) {
   const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
   const cor = p.cores[corIdx];
   if(!cor || cor.qty <= 0) { toast("Estoque zerado para " + cor.nome + "!", true); return; }
-  // Só decrementa estoque, sem registrar venda
   cor.qty -= 1;
   p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
   p.estoque = p.qty;
-  await salvarProduto(p);
+  const venda = {produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd:1, preco_unitario:p.preco, total:p.preco, pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
+  const hist  = {tipo:"venda", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd:1, total:p.preco, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(venda);
+  dados.historico.unshift(hist);
+  await Promise.all([sbPost("vendas", venda), sbPost("historico", hist), salvarProduto(p)]);
   renderEstoque();
   toast("−1 " + cor.nome + " · Estoque: " + cor.qty);
 }
@@ -1380,6 +1405,7 @@ function atualizarPreviewVenda() {
 
 document.addEventListener("input", e => {
   if(e.target.id === "vr-qtd") atualizarPreviewVenda();
+  if(e.target.id === "est-qtd") atualizarPreviewEstorno();
 });
 
 async function confirmarVendaRapida() {
