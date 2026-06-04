@@ -604,6 +604,10 @@ async function salvarProduto(p) {
     custo_ads: p.custo_ads || 0,
     custo_frete: p.custo_frete || 0,
     custo_outros: p.custo_outros || 0,
+    tipo_embalagem: p.tipo_embalagem || "rs",
+    tipo_ads: p.tipo_ads || "rs",
+    tipo_frete: p.tipo_frete || "rs",
+    tipo_outros: p.tipo_outros || "rs",
     cores: cores,
     foto: p.foto || "",
     updated_at: new Date().toISOString()
@@ -753,6 +757,10 @@ function openEdit(id) {
   document.getElementById("edit-custo-ads").value = p.custo_ads || 0;
   document.getElementById("edit-custo-frete").value = p.custo_frete || 0;
   document.getElementById("edit-custo-outros").value = p.custo_outros || 0;
+  document.getElementById("tipo-embalagem").value = p.tipo_embalagem || "rs";
+  document.getElementById("tipo-ads").value = p.tipo_ads || "rs";
+  document.getElementById("tipo-frete").value = p.tipo_frete || "rs";
+  document.getElementById("tipo-outros").value = p.tipo_outros || "rs";
   calcEditMargem();
   coresTemp = JSON.parse(JSON.stringify(p.cores || []));
   renderVarList(coresTemp);
@@ -800,6 +808,20 @@ function removerCor(idx) {
   coresTemp.splice(idx, 1);
   renderVarList(coresTemp);
 }
+// Calcula custo total real de um produto (respeitando tipo R$/%)
+function custoTotalProduto(p) {
+  if(!p) return 0;
+  const preco = p.preco || 0;
+  function val(v, tipo) {
+    return tipo === 'pct' ? (preco * (Number(v)||0) / 100) : (Number(v)||0);
+  }
+  return (Number(p.custo)||0) +
+    val(p.custo_embalagem, p.tipo_embalagem||'rs') +
+    val(p.custo_ads,       p.tipo_ads||'rs') +
+    val(p.custo_frete,     p.tipo_frete||'rs') +
+    val(p.custo_outros,    p.tipo_outros||'rs');
+}
+
 function custoEmReais(campo, preco) {
   const val  = parseFloat(document.getElementById(`edit-custo-${campo}`)?.value)||0;
   const tipo = document.getElementById(`tipo-${campo}`)?.value || 'rs';
@@ -857,6 +879,10 @@ async function salvarEdicao() {
   p.custo_ads       = parseFloat(document.getElementById("edit-custo-ads").value)||0;
   p.custo_frete     = parseFloat(document.getElementById("edit-custo-frete").value)||0;
   p.custo_outros    = parseFloat(document.getElementById("edit-custo-outros").value)||0;
+  p.tipo_embalagem  = document.getElementById("tipo-embalagem")?.value || "rs";
+  p.tipo_ads        = document.getElementById("tipo-ads")?.value || "rs";
+  p.tipo_frete      = document.getElementById("tipo-frete")?.value || "rs";
+  p.tipo_outros     = document.getElementById("tipo-outros")?.value || "rs";
   p.cores = coresTemp;
   if(p.cores && p.cores.length > 0) {
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
@@ -909,7 +935,7 @@ function renderEstoque() {
     // Margem real considerando taxas Shopee e custos adicionais
     function calcMargem(prod) {
       if(!prod.preco||prod.preco<=0) return null;
-      const custoTotal = (Number(prod.custo)||0)+(Number(prod.custo_embalagem)||0)+(Number(prod.custo_ads)||0)+(Number(prod.custo_frete)||0)+(Number(prod.custo_outros)||0);
+      const custoTotal = custoTotalProduto(prod);
       const comissao = prod.preco * 0.20;
       const tarifa = prod.preco<=79.99?4:prod.preco<=99.99?16:prod.preco<=199.99?20:26;
       return (prod.preco - comissao - tarifa - custoTotal) / prod.preco * 100;
@@ -1233,7 +1259,7 @@ function renderFinanceiro() {
   for(const v of vendasFinanc) {
     const p = dados.estoque.find(x=>x.id===v.produto_id);
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
-    const custoUnit = p ? (Number(p.custo)||0)+(Number(p.custo_embalagem)||0)+(Number(p.custo_ads)||0)+(Number(p.custo_frete)||0)+(Number(p.custo_outros)||0) : 0;
+    const custoUnit = custoTotalProduto(p);
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
     taxasShopeeTotal += (comissao + tarifa) * (v.qtd||1);
@@ -1285,7 +1311,7 @@ function renderFinanceiro() {
     porCor[key].receita  += v.total;
     // Calcular lucro Shopee para este item - sempre usa preco do produto cadastrado
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
-    const custoUnit = p ? (Number(p.custo)||0)+(Number(p.custo_embalagem)||0)+(Number(p.custo_ads)||0)+(Number(p.custo_frete)||0)+(Number(p.custo_outros)||0) : 0;
+    const custoUnit = custoTotalProduto(p);
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
     const lucroUnit = preco - comissao - tarifa - custoUnit;
