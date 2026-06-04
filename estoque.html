@@ -158,6 +158,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
         <option value="venda">📤 Removidos / Vendas</option>
         <option value="devolucao">↩️ Devoluções</option>
         <option value="estorno">🔄 Estornos</option>
+        <option value="estornados">⚠️ Estornados</option>
       </select>
       <select id="hist-mes" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
         <option value="">Todos os meses</option>
@@ -1013,7 +1014,11 @@ function renderHistorico() {
   const dataIni = document.getElementById("hist-data-ini").value;
   const dataFim = document.getElementById("hist-data-fim").value;
   let hist = [...dados.historico];
-  if(filtro !== "todos") hist = hist.filter(h => h.tipo === filtro);
+  if(filtro === "estornados") {
+    hist = hist.filter(h => h.estornado === true);
+  } else if(filtro !== "todos") {
+    hist = hist.filter(h => h.tipo === filtro);
+  }
   if(mesFilt) hist = hist.filter(h => {
     const m = h.mes || (h.data ? h.data.substring(0,7) : "");
     return m === mesFilt;
@@ -1042,8 +1047,10 @@ function renderHistorico() {
     const dataObj = new Date(h.data);
     const dataFmt = dataObj.toLocaleDateString("pt-BR");
     const horaFmt = dataObj.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-    const btnEstorno = (isEntrada||isVenda) && h.id ?
-      `<button class="btn btn-outline btn-xs" onclick="openEstornoById(${h.id})" style="white-space:nowrap;margin-top:4px">🔄 Estornar</button>` : "";
+    const jaEstornado = h.estornado === true;
+    const btnEstorno = (isEntrada||isVenda) && h.id && !jaEstornado ?
+      `<button class="btn btn-outline btn-xs" onclick="openEstornoById(${h.id})" style="white-space:nowrap;margin-top:4px">🔄 Estornar</button>` :
+      jaEstornado ? `<span style="font-size:10px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:4px;padding:2px 7px;margin-top:4px;display:inline-block">⚠️ Estornado${h.qtd_estornada&&h.qtd_estornada<h.qtd?' (parcial)':''}</span>` : "";
     return `<div class="hist-item" style="align-items:flex-start;gap:10px">
       <div class="hdot ${cls}" style="margin-top:5px;flex-shrink:0"></div>
       <div class="hinfo" style="flex:1">
@@ -1125,10 +1132,18 @@ async function confirmarEstorno() {
     }
     await salvarProduto(p);
   }
+  // Marcar registro original como estornado no Supabase
+  if(estornoAtual.id) {
+    await _sb.from("historico").update({estornado: true, qtd_estornada: qtd}).eq("id", estornoAtual.id);
+    // Atualizar no array local também
+    const hLocal = dados.historico.find(x=>x.id==estornoAtual.id);
+    if(hLocal) { hLocal.estornado = true; hLocal.qtd_estornada = qtd; }
+  }
   const histEstorno = {
     tipo:"estorno", produto_id:estornoAtual.produto_id,
     produto_nome:estornoAtual.produto_nome, qtd,
     obs:`Estorno de ${estornoAtual.tipo} (${qtd}un)`,
+    ref_id: estornoAtual.id,
     data:new Date().toISOString(), mes:mesAtual()
   };
   dados.historico.unshift(histEstorno);
