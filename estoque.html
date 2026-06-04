@@ -141,7 +141,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   </div>
   <div class="twrap" style="overflow-x:auto">
     <table>
-      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem</th><th>Status</th><th style="min-width:120px">Ações</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem Shopee</th><th>Status</th><th style="min-width:120px">Ações</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -906,7 +906,15 @@ function renderEstoque() {
   `;
 
   document.getElementById("tbody").innerHTML = prods.length ? prods.map(p=>{
-    const mg = (p.custo>0&&p.preco>0) ? ((p.preco-p.custo)/p.preco*100) : null;
+    // Margem real considerando taxas Shopee e custos adicionais
+    function calcMargem(prod) {
+      if(!prod.preco||prod.preco<=0) return null;
+      const custoTotal = (prod.custo||0)+(prod.custo_embalagem||0)+(prod.custo_ads||0)+(prod.custo_frete||0)+(prod.custo_outros||0);
+      const comissao = prod.preco * 0.20;
+      const tarifa = prod.preco<=79.99?4:prod.preco<=99.99?16:prod.preco<=199.99?20:26;
+      return (prod.preco - comissao - tarifa - custoTotal) / prod.preco * 100;
+    }
+    const mg = calcMargem(p);
     const badge = p.qty===0?"badge-danger":p.qty<5?"badge-warn":"badge-ok";
     const label = p.qty===0?"Zerado":p.qty<5?"Baixo":"OK";
     return `<tr>
