@@ -909,7 +909,7 @@ function renderEstoque() {
     // Margem real considerando taxas Shopee e custos adicionais
     function calcMargem(prod) {
       if(!prod.preco||prod.preco<=0) return null;
-      const custoTotal = (prod.custo||0)+(prod.custo_embalagem||0)+(prod.custo_ads||0)+(prod.custo_frete||0)+(prod.custo_outros||0);
+      const custoTotal = (Number(prod.custo)||0)+(Number(prod.custo_embalagem)||0)+(Number(prod.custo_ads)||0)+(Number(prod.custo_frete)||0)+(Number(prod.custo_outros)||0);
       const comissao = prod.preco * 0.20;
       const tarifa = prod.preco<=79.99?4:prod.preco<=99.99?16:prod.preco<=199.99?20:26;
       return (prod.preco - comissao - tarifa - custoTotal) / prod.preco * 100;
@@ -1233,7 +1233,7 @@ function renderFinanceiro() {
   for(const v of vendasFinanc) {
     const p = dados.estoque.find(x=>x.id===v.produto_id);
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
-    const custoUnit = p ? (p.custo||0)+(p.custo_embalagem||0)+(p.custo_ads||0)+(p.custo_frete||0)+(p.custo_outros||0) : 0;
+    const custoUnit = p ? (Number(p.custo)||0)+(Number(p.custo_embalagem)||0)+(Number(p.custo_ads)||0)+(Number(p.custo_frete)||0)+(Number(p.custo_outros)||0) : 0;
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
     taxasShopeeTotal += (comissao + tarifa) * (v.qtd||1);
@@ -1285,7 +1285,7 @@ function renderFinanceiro() {
     porCor[key].receita  += v.total;
     // Calcular lucro Shopee para este item - sempre usa preco do produto cadastrado
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
-    const custoUnit = p ? (p.custo||0)+(p.custo_embalagem||0)+(p.custo_ads||0)+(p.custo_frete||0)+(p.custo_outros||0) : 0;
+    const custoUnit = p ? (Number(p.custo)||0)+(Number(p.custo_embalagem)||0)+(Number(p.custo_ads)||0)+(Number(p.custo_frete)||0)+(Number(p.custo_outros)||0) : 0;
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
     const lucroUnit = preco - comissao - tarifa - custoUnit;
