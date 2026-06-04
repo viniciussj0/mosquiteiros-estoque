@@ -1003,55 +1003,139 @@ function limparFiltrosHist() {
   renderHistorico();
 }
 
+// Variável para estorno
+let estornoAtual = null;
+
 function renderHistorico() {
   popularMesesHist();
   const filtro  = document.getElementById("hist-filtro").value;
   const mesFilt = document.getElementById("hist-mes").value;
   const dataIni = document.getElementById("hist-data-ini").value;
   const dataFim = document.getElementById("hist-data-fim").value;
-
   let hist = [...dados.historico];
-
-  // Filtro por tipo
   if(filtro !== "todos") hist = hist.filter(h => h.tipo === filtro);
-
-  // Filtro por mês
   if(mesFilt) hist = hist.filter(h => {
     const m = h.mes || (h.data ? h.data.substring(0,7) : "");
     return m === mesFilt;
   });
-
-  // Filtro por data inicial
   if(dataIni) {
     const ini = new Date(dataIni + "T00:00:00");
     hist = hist.filter(h => h.data && new Date(h.data) >= ini);
   }
-  // Filtro por data final
   if(dataFim) {
     const fim = new Date(dataFim + "T23:59:59");
     hist = hist.filter(h => h.data && new Date(h.data) <= fim);
   }
-
   const el = document.getElementById("hist-list");
   const count = document.getElementById("hist-count");
   if(count) count.textContent = hist.length + " registros";
-
   if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação encontrada</div>'; return; }
-
   el.innerHTML = hist.slice(0,200).map(h=>{
-    const cls = h.tipo==="entrada"?"in":h.tipo==="venda"?"sale":h.tipo==="devolucao"?"dev":"out";
-    const icon = h.tipo==="entrada"?"📥":h.tipo==="venda"?"🛒":h.tipo==="devolucao"?"↩️":"📤";
-    const label = h.tipo==="entrada"?`+${h.qtd} un`:h.tipo==="venda"?`−${h.qtd} un (${R(h.total||0)})`:h.tipo==="devolucao"?`+${h.qtd} un devolvido`:`−${h.qtd} un`;
-    return `<div class="hist-item">
-      <div class="hdot ${cls}"></div>
-      <div class="hinfo">
-        <div class="hprod">${icon} ${h.produto_nome}</div>
-        <div class="hdesc">${h.tipo.charAt(0).toUpperCase()+h.tipo.slice(1)}${h.obs?" — "+h.obs:""}${h.pgto&&h.pgto!=="Não informado"?" — "+h.pgto:""}${h.motivo?" — "+h.motivo:""}</div>
+    const isEntrada = h.tipo==="entrada";
+    const isVenda   = h.tipo==="venda";
+    const isDev     = h.tipo==="devolucao";
+    const isEstorno = h.tipo==="estorno";
+    const cls  = isEntrada?"in":isVenda?"sale":isDev?"dev":isEstorno?"in":"out";
+    const icon = isEntrada?"📥":isVenda?"📤":isDev?"↩️":isEstorno?"🔄":"📤";
+    const sinal = (isEntrada||isDev||isEstorno) ? "+" : "−";
+    const label = `${sinal}${h.qtd} un${isVenda&&h.total?` (${R(h.total||0)})`:""}`;
+    const dataObj = new Date(h.data);
+    const dataFmt = dataObj.toLocaleDateString("pt-BR");
+    const horaFmt = dataObj.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    const btnEstorno = (isEntrada||isVenda) && h.id ?
+      `<button class="btn btn-outline btn-xs" onclick="openEstornoById(${h.id})" style="white-space:nowrap;margin-top:4px">🔄 Estornar</button>` : "";
+    return `<div class="hist-item" style="align-items:flex-start;gap:10px">
+      <div class="hdot ${cls}" style="margin-top:5px;flex-shrink:0"></div>
+      <div class="hinfo" style="flex:1">
+        <div class="hprod">${icon} <strong>${h.produto_nome}</strong></div>
+        <div class="hdesc" style="margin-top:2px">
+          ${isEntrada?"📥 Adicionado":isVenda?"📤 Removido/Vendido":isDev?"↩️ Devolução":isEstorno?"🔄 Estorno":"—"}
+          ${h.obs?" — "+h.obs:""}${h.pgto&&h.pgto!=="Não informado"?" — "+h.pgto:""}${h.motivo?" — "+h.motivo:""}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">📅 ${dataFmt} &nbsp;⏰ ${horaFmt}</div>
       </div>
-      <div class="hqty ${cls}">${label}</div>
-      <div class="htime">${fmtData(h.data)}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0">
+        <div class="hqty ${cls}">${label}</div>
+        ${btnEstorno}
+      </div>
     </div>`;
   }).join("");
+}
+
+function openEstornoById(id) {
+  const h = dados.historico.find(x => x.id == id);
+  if(!h) { toast("Movimentação não encontrada!", true); return; }
+  openEstorno(h);
+}
+
+function openEstorno(h) {
+  estornoAtual = h;
+  const isVenda = h.tipo === "venda";
+  document.getElementById("est-hist-id").value    = h.id || "";
+  document.getElementById("est-produto-id").value = h.produto_id || "";
+  document.getElementById("est-tipo").value        = h.tipo;
+  document.getElementById("est-qtd").value         = h.qtd || 1;
+  document.getElementById("est-qtd").max           = h.qtd || 999;
+  const acao = isVenda ? "devolver ao estoque" : "remover do estoque";
+  document.getElementById("est-info").innerHTML = `
+    <strong>${isVenda?"📤 Venda/Remoção":"📥 Entrada"}</strong><br>
+    Produto: <strong>${h.produto_nome}</strong><br>
+    Quantidade original: <strong>${h.qtd} un</strong><br>
+    Data: ${new Date(h.data).toLocaleString("pt-BR")}<br>
+    <span style="color:var(--accent);margin-top:4px;display:block">Estorno irá <strong>${acao}</strong></span>`;
+  atualizarPreviewEstorno();
+  openModal("ov-estorno");
+}
+
+function ajustarEstorno(delta) {
+  const inp = document.getElementById("est-qtd");
+  const val = parseInt(inp.value)||1;
+  const max = parseInt(inp.max)||999;
+  if(val+delta >= 1 && val+delta <= max) inp.value = val+delta;
+  atualizarPreviewEstorno();
+}
+
+function atualizarPreviewEstorno() {
+  if(!estornoAtual) return;
+  const qtd = parseInt(document.getElementById("est-qtd").value)||1;
+  const isVenda = estornoAtual.tipo === "venda";
+  const acao = isVenda ? `+${qtd} unidades voltam ao estoque` : `−${qtd} unidades removidas do estoque`;
+  document.getElementById("est-preview").textContent = "→ " + acao;
+}
+
+async function confirmarEstorno() {
+  if(!estornoAtual) return;
+  const qtd = parseInt(document.getElementById("est-qtd").value)||1;
+  const p   = dados.estoque.find(x=>x.id===estornoAtual.produto_id);
+  const isVenda = estornoAtual.tipo === "venda";
+  if(p) {
+    if(isVenda) {
+      p.qty += qtd;
+    } else {
+      if(p.qty < qtd) { toast("Estoque insuficiente para estorno!", true); return; }
+      p.qty -= qtd;
+    }
+    p.estoque = p.qty;
+    const corMatch = estornoAtual.produto_nome?.match(/\(([^)]+)\)/);
+    if(corMatch && p.cores) {
+      const corNome = corMatch[1];
+      const cor = p.cores.find(c=>c.nome===corNome);
+      if(cor) { isVenda ? cor.qty += qtd : cor.qty -= qtd; }
+      p.qty = p.cores.reduce((s,c)=>s+(c.qty||0),0);
+    }
+    await salvarProduto(p);
+  }
+  const histEstorno = {
+    tipo:"estorno", produto_id:estornoAtual.produto_id,
+    produto_nome:estornoAtual.produto_nome, qtd,
+    obs:`Estorno de ${estornoAtual.tipo} (${qtd}un)`,
+    data:new Date().toISOString(), mes:mesAtual()
+  };
+  dados.historico.unshift(histEstorno);
+  await sbPost("historico", histEstorno);
+  estornoAtual = null;
+  renderAll(); closeModal("ov-estorno");
+  toast(`🔄 Estorno realizado: ${qtd}x ${histEstorno.produto_nome}`);
 }
 
 // ── RENDER FINANCEIRO ─────────────────────────────────────────────────────────
