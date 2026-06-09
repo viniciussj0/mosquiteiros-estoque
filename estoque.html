@@ -212,16 +212,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     </div>
     <!-- Produtos mais vendidos -->
     <div class="twrap">
-      <div style="background:var(--surface2);padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <span style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Vendas por Produto</span>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <input type="date" id="vend-data-ini" onchange="renderFinanceiro()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data inicial">
-          <span style="font-size:11px;color:var(--text3)">até</span>
-          <input type="date" id="vend-data-fim" onchange="renderFinanceiro()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data final">
-          <button onclick="limparFiltroVendas()" title="Limpar datas" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;cursor:pointer;color:var(--text2)">✕</button>
-          <button onclick="gerarPDF()" style="padding:4px 10px;border:none;border-radius:var(--radius-sm);font-size:11px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;gap:4px">📄 PDF</button>
-        </div>
-      </div>
+      <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Vendas por Produto</div>
       <div style="overflow-x:auto">
         <table>
           <thead><tr>
@@ -1233,29 +1224,9 @@ async function confirmarEstorno() {
 }
 
 // ── RENDER FINANCEIRO ─────────────────────────────────────────────────────────
-function limparFiltroVendas() {
-  document.getElementById("vend-data-ini").value = "";
-  document.getElementById("vend-data-fim").value = "";
-  renderFinanceiro();
-}
-
 function renderFinanceiro() {
   const mes = mesAtual();
-  // Filtro de datas do card de vendas
-  const vendDataIni = document.getElementById("vend-data-ini")?.value || "";
-  const vendDataFim = document.getElementById("vend-data-fim")?.value || "";
-  let vendas;
-  if(vendDataIni || vendDataFim) {
-    vendas = dados.vendas.filter(v => {
-      if(!v.data) return false;
-      const d = new Date(v.data);
-      if(vendDataIni && d < new Date(vendDataIni + "T00:00:00")) return false;
-      if(vendDataFim && d > new Date(vendDataFim + "T23:59:59")) return false;
-      return true;
-    });
-  } else {
-    vendas = dados.vendas.filter(v=>v.mes===mes);
-  }
+  const vendas   = dados.vendas.filter(v=>v.mes===mes);
   const filtro   = document.getElementById("desp-filtro")?.value || "mes";
   let despesas;
   const deспMesSel = document.getElementById("desp-mes-filtro");
@@ -1752,191 +1723,6 @@ async function checkBot() {
     if(dot) dot.style.background='var(--danger)';
     if(txt) txt.textContent = 'Bot offline';
   }
-}
-
-// ── GERAR PDF ─────────────────────────────────────────────────────────────────
-function gerarPDF() {
-  // Coleta dados atuais exibidos na tela
-  const mes = mesAtual();
-  const vendDataIni = document.getElementById("vend-data-ini")?.value || "";
-  const vendDataFim = document.getElementById("vend-data-fim")?.value || "";
-
-  // Período para o título
-  let periodoLabel = "";
-  if(vendDataIni && vendDataFim) {
-    periodoLabel = `${new Date(vendDataIni+"T12:00:00").toLocaleDateString("pt-BR")} a ${new Date(vendDataFim+"T12:00:00").toLocaleDateString("pt-BR")}`;
-  } else if(vendDataIni) {
-    periodoLabel = `A partir de ${new Date(vendDataIni+"T12:00:00").toLocaleDateString("pt-BR")}`;
-  } else if(vendDataFim) {
-    periodoLabel = `Até ${new Date(vendDataFim+"T12:00:00").toLocaleDateString("pt-BR")}`;
-  } else {
-    const [ano, m] = mes.split("-");
-    const nomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-    periodoLabel = `${nomes[parseInt(m)-1]} de ${ano}`;
-  }
-
-  // Coleta dados do demonstrativo atual (pega dos elementos renderizados)
-  const finDemo = document.getElementById("fin-demo");
-  const kpis    = document.getElementById("fin-kpis");
-
-  // Coleta linhas da tabela de vendas (preserva data-nome real)
-  const linhasVendas = [];
-  document.querySelectorAll("#fin-produtos tr").forEach(tr => {
-    const tds = tr.querySelectorAll("td");
-    if(tds.length >= 5) {
-      linhasVendas.push({
-        nome:    tds[0].dataset.nome || tds[0].textContent.trim(),
-        qtd:     tds[1].textContent.trim(),
-        receita: tds[2].textContent.trim(),
-        lucro:   tds[3].textContent.trim(),
-        margem:  tds[4].textContent.trim(),
-        lucroPct: parseFloat(tds[4].textContent) || 0
-      });
-    }
-  });
-
-  // Coleta KPIs
-  const kpiCards = kpis ? kpis.querySelectorAll(".sum-card") : [];
-  const kpiData = [];
-  kpiCards.forEach(c => {
-    const lbl = c.querySelector(".lbl")?.textContent || "";
-    const val = c.querySelector(".val")?.textContent || "";
-    const sub = c.querySelector(".sub")?.textContent || "";
-    kpiData.push({lbl, val, sub});
-  });
-
-  // Monta linhas do demonstrativo
-  const demoRows = [];
-  if(finDemo) {
-    finDemo.querySelectorAll("div[style*='justify-content:space-between']").forEach(row => {
-      const spans = row.querySelectorAll("span, strong");
-      if(spans.length >= 2) {
-        demoRows.push({
-          label: spans[0].textContent.replace(/[📊💰🏷💸🛍️✅]/g,"").trim(),
-          valor: spans[spans.length-1].textContent.trim(),
-          destaque: row.style.background ? true : false
-        });
-      }
-    });
-  }
-
-  // Geração do HTML do PDF
-  const agora = new Date().toLocaleString("pt-BR");
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>Relatório FinStack — ${periodoLabel}</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Sora',Arial,sans-serif;color:#1a1917;background:#fff;font-size:12px;padding:32px 36px}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #1a4a6b;margin-bottom:24px}
-  .brand{font-size:22px;font-weight:700;color:#1a4a6b}.brand span{color:#2d7d4f}
-  .brand small{display:block;font-size:11px;font-weight:400;color:#6b6760;margin-top:2px}
-  .meta{text-align:right;font-size:11px;color:#6b6760}
-  .meta strong{display:block;font-size:14px;color:#1a1917;margin-bottom:2px}
-  .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6b6760;margin:20px 0 10px;padding-bottom:4px;border-bottom:1px solid #ddd9d0}
-  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
-  .kpi{background:#f5f3ee;border:1px solid #ddd9d0;border-radius:6px;padding:10px 12px}
-  .kpi .l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#9d9890;margin-bottom:4px}
-  .kpi .v{font-size:16px;font-weight:700;color:#1a4a6b;font-family:monospace}
-  .kpi .s{font-size:10px;color:#9d9890;margin-top:2px}
-  .kpi.ok .v{color:#2d7d4f}.kpi.danger .v{color:#b33a2b}
-  .demo-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0ede6;font-size:12px}
-  .demo-row.destaque{background:#e8f0f7;margin:6px -8px;padding:8px 8px;border-radius:4px;border:none;font-weight:600}
-  .demo-label{color:#6b6760}.demo-val{font-family:monospace;font-weight:600}
-  table{width:100%;border-collapse:collapse;margin-top:4px}
-  thead th{background:#1a4a6b;color:#fff;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;padding:8px 10px;text-align:left}
-  thead th:not(:first-child){text-align:right}
-  tbody tr{border-bottom:1px solid #f0ede6}
-  tbody tr:nth-child(even){background:#fafaf8}
-  tbody td{padding:7px 10px;font-size:11px;vertical-align:middle}
-  tbody td:not(:first-child){text-align:right;font-family:monospace}
-  .badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600}
-  .ok{color:#2d7d4f}.danger{color:#b33a2b}.warn{color:#8a5e1a}
-  .totals-row td{font-weight:700;background:#f0ede6;border-top:2px solid #ddd9d0}
-  .footer{margin-top:28px;padding-top:12px;border-top:1px solid #ddd9d0;display:flex;justify-content:space-between;font-size:10px;color:#9d9890}
-  @media print{body{padding:16px 20px}@page{margin:1.2cm 1.5cm;size:A4}}
-</style>
-</head>
-<body>
-<div class="header">
-  <div>
-    <div class="brand">Fin<span>Stack</span><small>Gestão de Estoque & Financeiro</small></div>
-  </div>
-  <div class="meta">
-    <strong>Relatório de Vendas</strong>
-    Período: ${periodoLabel}<br>
-    Gerado em: ${agora}
-  </div>
-</div>
-
-<div class="section-title">Resumo do Período</div>
-<div class="kpi-grid">
-  ${kpiData.map(k=>{
-    const isOk = k.val.includes("R$") && !k.lbl.includes("Despesa") && !k.lbl.includes("Custo");
-    const isDanger = k.lbl.includes("Despesa");
-    const cls = isDanger ? "danger" : (isOk ? "ok" : "");
-    return `<div class="kpi ${cls}"><div class="l">${k.lbl}</div><div class="v">${k.val}</div><div class="s">${k.sub}</div></div>`;
-  }).join("")}
-</div>
-
-<div class="section-title">Demonstrativo Financeiro</div>
-${demoRows.map(r=>`
-  <div class="demo-row${r.destaque?' destaque':''}">
-    <span class="demo-label">${r.label}</span>
-    <span class="demo-val">${r.valor.replace(/\(.*?\)/,"").trim()}</span>
-  </div>`).join("")}
-
-<div class="section-title">Vendas por Produto / Cor</div>
-<table>
-  <thead><tr>
-    <th>Produto / Cor</th>
-    <th>Qtd</th>
-    <th>Receita</th>
-    <th>Lucro (Shopee)</th>
-    <th>Margem</th>
-  </tr></thead>
-  <tbody>
-    ${linhasVendas.length ? linhasVendas.map(l=>{
-      const mgCls = l.lucroPct >= 20 ? "ok" : l.lucroPct >= 10 ? "warn" : "danger";
-      return `<tr>
-        <td>${l.nome}</td>
-        <td>${l.qtd}</td>
-        <td class="ok">${l.receita}</td>
-        <td class="${l.lucro.startsWith("-")?"danger":"ok"}">${l.lucro}</td>
-        <td class="${mgCls}">${l.margem}</td>
-      </tr>`;
-    }).join("") : `<tr><td colspan="5" style="text-align:center;padding:16px;color:#9d9890">Nenhuma venda no período</td></tr>`}
-    ${linhasVendas.length > 1 ? (()=>{
-      const totQtd = linhasVendas.reduce((s,l)=>s+parseInt(l.qtd||0),0);
-      const totRec = linhasVendas.reduce((s,l)=>s+(parseFloat((l.receita||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
-      const totLuc = linhasVendas.reduce((s,l)=>s+(parseFloat((l.lucro||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
-      return `<tr class="totals-row">
-        <td>TOTAL (${linhasVendas.length} itens)</td>
-        <td>${totQtd}</td>
-        <td>R$ ${totRec.toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d)),".")}</td>
-        <td>R$ ${totLuc.toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d)),".")}</td>
-        <td>—</td>
-      </tr>`;
-    })() : ""}
-  </tbody>
-</table>
-
-<div class="footer">
-  <span>FinStack — Sistema de Gestão de Estoque & Financeiro</span>
-  <span>Relatório gerado automaticamente em ${agora}</span>
-</div>
-
-<script>window.onload=()=>{window.print();}<\/script>
-</body>
-</html>`;
-
-  const w = window.open("", "_blank", "width=900,height=700");
-  if(!w) { toast("⚠️ Permita pop-ups para gerar o PDF!", true); return; }
-  w.document.write(html);
-  w.document.close();
 }
 
 async function init() {
