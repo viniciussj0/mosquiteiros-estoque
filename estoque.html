@@ -215,7 +215,16 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Vendas por Produto</div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Produto</th><th style="text-align:right">Qtd</th><th style="text-align:right">Receita</th><th style="text-align:right">Lucro</th></tr></thead>
+          <thead><tr>
+            <th style="padding:8px 14px;font-size:11px;white-space:nowrap">
+              Produto / Cor
+              <button onclick="toggleNomesProdutos()" id="btn-toggle-nomes" title="Ocultar/mostrar nomes dos produtos" style="background:none;border:none;cursor:pointer;margin-left:6px;font-size:13px;vertical-align:middle;opacity:.6;padding:0;line-height:1" tabindex="-1">👁</button>
+            </th>
+            <th style="text-align:right">Qtd</th>
+            <th style="text-align:right">Receita</th>
+            <th style="text-align:right">Lucro Unit.</th>
+            <th style="text-align:right">Margem</th>
+          </tr></thead>
           <tbody id="fin-produtos"></tbody>
         </table>
       </div>
@@ -565,6 +574,42 @@ let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
 let saving = false;
 let lastSaveTime = 0;
 
+// ── VISIBILIDADE NOMES PRODUTOS (tabela financeiro) ───────────────────────────
+let nomesVisiveis = true;
+
+function toggleNomesProdutos() {
+  nomesVisiveis = !nomesVisiveis;
+  const btn = document.getElementById('btn-toggle-nomes');
+  if(btn) btn.textContent = nomesVisiveis ? '👁' : '🙈';
+  // Atualiza todas as células com classe cell-nome-produto
+  document.querySelectorAll('.cell-nome-produto').forEach(td => {
+    if(!nomesVisiveis) {
+      // Salva o texto real no data-nome antes de ocultar
+      if(!td.dataset.nome) td.dataset.nome = td.textContent.trim();
+      td.textContent = '••••••••••••';
+      td.style.color = 'var(--text3)';
+      td.style.letterSpacing = '2px';
+    } else {
+      if(td.dataset.nome) td.textContent = td.dataset.nome;
+      td.style.color = '';
+      td.style.letterSpacing = '';
+    }
+  });
+}
+
+// Aplica estado atual aos novos elementos renderizados
+function aplicarEstadoNomes() {
+  if(nomesVisiveis) return; // nada a fazer se visivel
+  const btn = document.getElementById('btn-toggle-nomes');
+  if(btn) btn.textContent = '🙈';
+  document.querySelectorAll('.cell-nome-produto').forEach(td => {
+    if(!td.dataset.nome) td.dataset.nome = td.textContent.trim();
+    td.textContent = '••••••••••••';
+    td.style.color = 'var(--text3)';
+    td.style.letterSpacing = '2px';
+  });
+}
+
 // ── SUPABASE HELPERS (SDK) ───────────────────────────────────────────────────
 async function sbGet(table, paramsStr="") {
   let q = _sb.from(table).select("*");
@@ -591,7 +636,6 @@ async function sbDelete(table, id) {
   return true;
 }
 
-// Salva um produto específico no Supabase (cores incluídas)
 async function salvarProduto(p) {
   const cores = Array.isArray(p.cores) ? p.cores : [];
   return sbPatch("estoque", p.id, {
@@ -665,9 +709,6 @@ function garantirProdutos() {
     if(p.cod === undefined) p.cod = p.id;
     if(!Array.isArray(p.cores)) p.cores = [];
   });
-  // Só adiciona produtos padrão se o estoque estiver completamente vazio
-  // (primeira vez que o sistema é usado)
-  // Não reinsere produtos que foram deletados
   if(dados.estoque.length === 0) {
     for(const p of PRODUTOS_PADRAO) dados.estoque.push({...p});
   }
@@ -767,7 +808,6 @@ function openEdit(id) {
   openModal("ov-edit");
 }
 
-// Array temporario de cores durante edicao
 let coresTemp = [];
 
 function renderVarList(cores) {
@@ -808,7 +848,7 @@ function removerCor(idx) {
   coresTemp.splice(idx, 1);
   renderVarList(coresTemp);
 }
-// Calcula custo total real de um produto (respeitando tipo R$/%)
+
 function custoTotalProduto(p) {
   if(!p) return 0;
   const preco = p.preco || 0;
@@ -835,6 +875,7 @@ function tarifaFixaShopee(preco) {
   if(preco <= 499.99) return 26;
   return 26;
 }
+
 function calcEditMargem() {
   const c        = parseFloat(document.getElementById("edit-custo").value)||0;
   const v        = parseFloat(document.getElementById("edit-preco").value)||0;
@@ -849,7 +890,6 @@ function calcEditMargem() {
     el.textContent = `Custo total: ${R(custoTotal)} | Margem bruta: ${m.toFixed(1)}% | Lucro: ${R(v - custoTotal)}`;
     el.style.color = m > 30 ? "var(--accent2)" : m > 15 ? "var(--warn)" : "var(--danger)";
   } else el.textContent = "";
-  // Calculadora Shopee
   const calc = document.getElementById("shopee-calc");
   if(v > 0) {
     calc.style.display = "block";
@@ -869,6 +909,7 @@ function calcEditMargem() {
     calc.style.display = "none";
   }
 }
+
 async function salvarEdicao() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
@@ -932,7 +973,6 @@ function renderEstoque() {
   `;
 
   document.getElementById("tbody").innerHTML = prods.length ? prods.map(p=>{
-    // Margem real considerando taxas Shopee e custos adicionais
     function calcMargem(prod) {
       if(!prod.preco||prod.preco<=0) return null;
       const custoTotal = custoTotalProduto(prod);
@@ -985,7 +1025,6 @@ async function altQty(id, delta) {
   p.qty += delta;
   const tipo = delta>0?"entrada":"venda";
   const reg = {tipo, produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), data:new Date().toISOString(), mes:mesAtual()};
-  // Se for saida (-), registra também como venda para controle financeiro
   if(delta < 0) {
     reg.preco_unitario = p.preco;
     reg.total = p.preco * Math.abs(delta);
@@ -1038,7 +1077,6 @@ function limparFiltrosHist() {
   renderHistorico();
 }
 
-// Variável para estorno
 let estornoAtual = null;
 
 function renderHistorico() {
@@ -1166,10 +1204,8 @@ async function confirmarEstorno() {
     }
     await salvarProduto(p);
   }
-  // Marcar registro original como estornado no Supabase
   if(estornoAtual.id) {
     await _sb.from("historico").update({estornado: true, qtd_estornada: qtd}).eq("id", estornoAtual.id);
-    // Atualizar no array local também
     const hLocal = dados.historico.find(x=>x.id==estornoAtual.id);
     if(hLocal) { hLocal.estornado = true; hLocal.qtd_estornada = qtd; }
   }
@@ -1193,7 +1229,6 @@ function renderFinanceiro() {
   const vendas   = dados.vendas.filter(v=>v.mes===mes);
   const filtro   = document.getElementById("desp-filtro")?.value || "mes";
   let despesas;
-  // Popular meses no select
   const deспMesSel = document.getElementById("desp-mes-filtro");
   if(deспMesSel) {
     const mesesDesp = new Set();
@@ -1234,7 +1269,6 @@ function renderFinanceiro() {
     despesas = despesas.filter(d => d.data && new Date(d.data) <= fim);
   }
 
-  // Filtrar vendas válidas (não estornadas) para cálculo financeiro
   const vendasFinanc = vendas.filter(v => {
     const hCorr = dados.historico.find(h =>
       h.tipo === "venda" &&
@@ -1253,7 +1287,6 @@ function renderFinanceiro() {
   }
   const lucro      = receita - despTot - custoProd;
   const margem     = receita>0?(lucro/receita*100):0;
-  // Lucro Shopee total (considera comissão + tarifa fixa + todos os custos) - só vendas válidas
   let lucroShopeeTotal = 0;
   let taxasShopeeTotal = 0;
   for(const v of vendasFinanc) {
@@ -1283,33 +1316,16 @@ function renderFinanceiro() {
     <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido (Shopee)</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucroShopeeTotal>=0?'var(--accent2)':'var(--danger)'}">${R(lucroShopeeTotal)} <span style="font-size:12px;opacity:.7">(${margemShopee.toFixed(1)}%)</span></strong></div>
   `;
 
-  // IDs do historico que foram estornados
-  const histEstornadosIds = new Set(
-    dados.historico.filter(h=>h.estornado===true).map(h=>h.id)
-  );
-  // Mapear vendas para seus historicos correspondentes e excluir estornadas
-  // Uma venda é estornada se há um historico com mesmo produto_nome+data+tipo=venda marcado como estornado
-  const vendasValidas = vendas.filter(v => {
-    // Busca historico correspondente a esta venda
-    const hCorr = dados.historico.find(h =>
-      h.tipo === "venda" &&
-      h.produto_nome === v.produto_nome &&
-      Math.abs(new Date(h.data) - new Date(v.data)) < 10000
-    );
-    return !hCorr || !hCorr.estornado;
-  });
-
-  // Por cor separada (chave = produto_nome completo incluindo cor)
+  // Por cor separada
   const porCor = {};
   for(const v of vendasFinanc) {
-    const key = v.produto_nome; // Ex: "Mosquiteiro Casal Padrao (Azul)" ou "Mosquiteiro Casal Padrao"
+    const key = v.produto_nome;
     const p = dados.estoque.find(x=>x.id===v.produto_id);
     if(!porCor[key]) {
       porCor[key] = {nome: v.produto_nome, qtd:0, receita:0, custo: p ? p.custo : 0, lucroShopee:0};
     }
     porCor[key].qtd      += v.qtd;
     porCor[key].receita  += v.total;
-    // Calcular lucro Shopee para este item - sempre usa preco do produto cadastrado
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
     const custoUnit = custoTotalProduto(p);
     const comissao = preco * 0.20;
@@ -1319,20 +1335,20 @@ function renderFinanceiro() {
     porCor[key].margem = preco > 0 ? (lucroUnit / preco * 100) : 0;
   }
   const itens = Object.values(porCor).sort((a,b)=>b.receita-a.receita);
+
+  // Gera o HTML da tabela e depois aplica o estado de visibilidade
   document.getElementById("fin-produtos").innerHTML = itens.length
-    ? `<tr><td colspan="4" style="max-height:300px;overflow-y:auto;display:block;padding:0">
-        <table style="width:100%">
-          <thead><tr style="background:var(--surface2)"><th style="padding:8px 14px;font-size:11px">Produto / Cor</th><th style="text-align:right;padding:8px 14px;font-size:11px">Qtd</th><th style="text-align:right;padding:8px 14px;font-size:11px">Receita</th><th style="text-align:right;padding:8px 14px;font-size:11px">Lucro Unit.</th><th style="text-align:right;padding:8px 14px;font-size:11px">Margem</th></tr></thead>
-          <tbody>${itens.map(x=>`<tr>
-            <td style="padding:8px 14px;font-size:13px">${x.nome}</td>
-            <td style="text-align:right;font-family:'JetBrains Mono',monospace;padding:8px 14px">${x.qtd}</td>
-            <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2);padding:8px 14px">${R(x.receita)}</td>
-            <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.lucroShopee>=0?'var(--accent2)':'var(--danger)'};padding:8px 14px">${R(x.lucroShopee)}</td>
-            <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${(x.margem||0)>=20?'var(--accent2)':(x.margem||0)>=10?'var(--warn)':'var(--danger)'};padding:8px 14px">${(x.margem||0).toFixed(1)}%</td>
-          </tr>`).join("")}</tbody>
-        </table>
-      </td></tr>`
-    : `<tr><td colspan="4" class="empty">Nenhuma venda este mês</td></tr>`;
+    ? itens.map(x=>`<tr>
+        <td class="cell-nome-produto" data-nome="${x.nome.replace(/"/g,'&quot;')}" style="padding:8px 14px;font-size:13px">${x.nome}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;padding:8px 14px">${x.qtd}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2);padding:8px 14px">${R(x.receita)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.lucroShopee>=0?'var(--accent2)':'var(--danger)'};padding:8px 14px">${R(x.lucroShopee)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${(x.margem||0)>=20?'var(--accent2)':(x.margem||0)>=10?'var(--warn)':'var(--danger)'};padding:8px 14px">${(x.margem||0).toFixed(1)}%</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">Nenhuma venda este mês</td></tr>`;
+
+  // Reaplica estado de ocultamento se estiver ativo
+  aplicarEstadoNomes();
 
   // Categorias despesas
   const cats = {};
@@ -1343,7 +1359,6 @@ function renderFinanceiro() {
       <div style="font-size:14px;font-weight:700;color:var(--danger);font-family:'JetBrains Mono',monospace">${R(v)}</div>
     </div>`).join("");
 
-  // Tabela despesas
   document.getElementById("desp-tbody").innerHTML = despesas.length
     ? despesas.map(d=>`<tr>
         <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
@@ -1361,7 +1376,6 @@ function openVendaRapida(id) {
   document.getElementById("vr-produto-id").value = id;
   document.getElementById("vr-produto-nome").textContent = p.nome;
   document.getElementById("vr-qtd").value = 1;
-  // Mostrar cores se tiver
   const coresSection = document.getElementById("vr-cores-section");
   if(p.cores && p.cores.length > 0) {
     coresSection.innerHTML = `<div class="mrow"><label>Variação de Cor</label><select id="vr-cor">
@@ -1427,7 +1441,6 @@ async function confirmarDevolucao() {
   const corSel = document.getElementById("dev-cor");
   const corIdx = corSel ? parseInt(corSel.value) : NaN;
 
-  // Devolve ao estoque
   if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
     p.cores[corIdx].qty += qtd;
     p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
@@ -1438,7 +1451,6 @@ async function confirmarDevolucao() {
 
   const reembolso = p.preco * qtd;
 
-  // Registra no historico
   dados.historico.unshift({
     tipo: "devolucao",
     produto_id: p.id,
@@ -1449,7 +1461,6 @@ async function confirmarDevolucao() {
     mes: mesAtual()
   });
 
-  // Registra como despesa (reembolso)
   dados.despesas.unshift({
     id: Date.now(),
     valor: reembolso,
@@ -1468,9 +1479,7 @@ async function deletarProduto() {
   const id = document.getElementById("edit-id").value;
   const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
   if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
-  // Remove do array local primeiro
   dados.estoque = dados.estoque.filter(x=>x.id!==id);
-  // Delete no Supabase usando SDK (suporta IDs com hífen nativamente)
   const {error} = await _sb.from("estoque").delete().eq("id", id);
   if(error) { console.error("Erro ao deletar produto:", error); toast("⚠️ Erro ao excluir!", true); return; }
   renderAll(); closeModal("ov-edit");
@@ -1485,7 +1494,6 @@ async function salvarNovoProduto() {
   const qty   = parseInt(document.getElementById("np-qty").value)||0;
   if(!nome) { toast("Informe o nome do produto!", true); return; }
   if(!cod)  { toast("Informe o código do produto!", true); return; }
-  // Check duplicate
   if(dados.estoque.find(p=>p.id===cod||p.cod===cod)) { toast("Código já existe!", true); return; }
   dados.estoque.push({id:cod, cod:cod, nome, custo, preco, qty, estoque:qty, cores:[]});
   await sbPost("estoque", {id:cod, cod:cod, nome, custo, preco, qty, cores:[], foto:""});
@@ -1495,7 +1503,6 @@ async function salvarNovoProduto() {
     await sbPost("historico", _hNovo);
   }
   renderAll(); closeModal("ov-novo-produto");
-  // Clear form
   ["np-nome","np-cod","np-custo","np-preco","np-qty"].forEach(id=>{
     document.getElementById(id).value = id.includes("custo")||id.includes("preco")?"0":id.includes("qty")?"0":"";
   });
@@ -1592,7 +1599,6 @@ async function confirmarVendaRapida() {
   const qty_atual = p.qty;
   if(qty_atual < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
   
-  // Deduz da cor se selecionada
   if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
     if(p.cores[corIdx].qty < qtd) { toast("⚠️ Estoque dessa cor insuficiente!", true); return; }
     p.cores[corIdx].qty -= qtd;
