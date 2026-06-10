@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinStack — Gestão de Estoque & Financeiro</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -123,6 +124,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   <div class="tab" onclick="showPage('historico',this)">📋 Histórico</div>
   <div class="tab" onclick="showPage('financeiro',this)">📊 Financeiro</div>
   <div class="tab" onclick="showPage('telegram',this)">📱 Telegram</div>
+  <div class="tab" onclick="showPage('shopee',this)">🛍️ Importar Shopee</div>
 </nav>
 
 <div class="main">
@@ -131,7 +133,10 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <div class="page active" id="page-estoque">
   <div class="sum-grid" id="sum-grid"></div>
   <div class="sec-hd">
-    <span class="sec-title">Produtos em Estoque</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="sec-title">Produtos em Estoque</span>
+      <button onclick="toggleNomesEstoque()" id="btn-toggle-estoque" title="Ocultar/mostrar nomes dos produtos" style="background:none;border:none;cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1" tabindex="-1">👁</button>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input class="search" type="text" placeholder="🔍 Buscar produto..." id="search-inp" oninput="filterTable()">
       <button class="btn btn-outline" onclick="openModal('ov-novo-produto')">➕ Produto</button>
@@ -291,6 +296,71 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div style="background:var(--surface2);padding:12px 16px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Comandos do Bot</div>
       <div style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:10px" id="tg-cmds"></div>
     </div>
+  </div>
+</div>
+
+<!-- ═══ SHOPEE ════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-shopee">
+  <div style="max-width:860px;margin:0 auto">
+
+    <!-- Upload area -->
+    <div id="shopee-upload-area" style="border:2px dashed var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;background:var(--surface);margin-bottom:1.5rem;cursor:pointer;transition:all .2s" 
+         onclick="document.getElementById('shopee-file-inp').click()"
+         ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+         ondragleave="this.style.borderColor='var(--border)'"
+         ondrop="handleShopeeDrop(event)">
+      <div style="font-size:40px;margin-bottom:12px">🛍️</div>
+      <div style="font-size:15px;font-weight:600;color:var(--accent);margin-bottom:6px">Importar Relatório da Shopee</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">Arraste o arquivo .xlsx aqui ou clique para selecionar</div>
+      <div style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:var(--radius-sm);padding:8px 14px;display:inline-block">
+        Shopee → Finanças → Minha Renda → Exportar
+      </div>
+      <input type="file" id="shopee-file-inp" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleShopeeFile(this)">
+    </div>
+
+    <!-- Preview / resultado -->
+    <div id="shopee-resultado" style="display:none">
+      <!-- Resumo financeiro -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span>Resumo do Período</span>
+          <span id="shopee-periodo" style="font-weight:400;color:var(--text3);text-transform:none;font-size:12px"></span>
+        </div>
+        <div id="shopee-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:1rem"></div>
+      </div>
+
+      <!-- Tabela de pedidos -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span>Pedidos (<span id="shopee-total-pedidos">0</span>)</span>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="shopee-busca" placeholder="🔍 Buscar pedido..." oninput="filtrarTabelaShopee()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;outline:none;width:180px">
+            <button onclick="exportarShopeeCSV()" class="btn btn-outline btn-sm">⬇️ CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>ID Pedido</th>
+              <th>Produto</th>
+              <th>Data</th>
+              <th style="text-align:right">Preço Bruto</th>
+              <th style="text-align:right">Comissão</th>
+              <th style="text-align:right">Taxa Serv.</th>
+              <th style="text-align:right">Outras Taxas</th>
+              <th style="text-align:right">Valor Liberado</th>
+            </tr></thead>
+            <tbody id="shopee-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Botão limpar -->
+      <div style="text-align:center">
+        <button onclick="limparShopee()" class="btn btn-outline">✕ Limpar e importar outro arquivo</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1002,7 +1072,7 @@ function renderEstoque() {
       <td style="display:flex;align-items:center;gap:10px">
         ${p.foto ? `<img src="${p.foto}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer" onclick="openImagem('${p.id}')">` : ''}
         <div>
-          <strong>${p.nome}</strong>
+          <strong class="cell-nome-estoque" data-nome="${p.nome}">${p.nome}</strong>
           ${p.cores && p.cores.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.cores.map((c,i)=>`
             <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px 2px 4px;cursor:pointer" onclick="openCorRapida('${p.id}',${i})" title="Clique para ajustar estoque de ${c.nome}">
               <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block;flex-shrink:0"></span>
@@ -1938,6 +2008,230 @@ ${demoRows.map(r=>`
   if(!w) { toast("⚠️ Permita pop-ups para gerar o PDF!", true); return; }
   w.document.write(html);
   w.document.close();
+}
+
+
+// ── VISIBILIDADE NOMES ESTOQUE ───────────────────────────────────────────────
+let nomesEstoqueVisiveis = true;
+
+function toggleNomesEstoque() {
+  nomesEstoqueVisiveis = !nomesEstoqueVisiveis;
+  const btn = document.getElementById('btn-toggle-estoque');
+  if(btn) btn.textContent = nomesEstoqueVisiveis ? '👁' : '🙈';
+  aplicarEstadoNomesEstoque();
+}
+
+function aplicarEstadoNomesEstoque() {
+  if(nomesEstoqueVisiveis) return;
+  const btn = document.getElementById('btn-toggle-estoque');
+  if(btn) btn.textContent = '🙈';
+  document.querySelectorAll('.cell-nome-estoque').forEach(el => {
+    if(!el.dataset.nome) el.dataset.nome = el.textContent.trim();
+    el.textContent = '••••••••••••';
+    el.style.color = 'var(--text3)';
+    el.style.letterSpacing = '2px';
+    el.style.fontWeight = '600';
+  });
+}
+
+function restaurarNomesEstoque() {
+  document.querySelectorAll('.cell-nome-estoque').forEach(el => {
+    if(el.dataset.nome) el.textContent = el.dataset.nome;
+    el.style.color = '';
+    el.style.letterSpacing = '';
+    el.style.fontWeight = '';
+  });
+}
+
+// ── IMPORTADOR SHOPEE ─────────────────────────────────────────────────────────
+let shopeeData = [];
+
+function handleShopeeDrop(e) {
+  e.preventDefault();
+  document.getElementById('shopee-upload-area').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if(file) processShopeeFile(file);
+}
+
+function handleShopeeFile(input) {
+  const file = input.files[0];
+  if(file) processShopeeFile(file);
+}
+
+async function processShopeeFile(file) {
+  try {
+    setSyncLabel("Lendo arquivo...");
+    const buf = await file.arrayBuffer();
+    
+    // Usar SheetJS (já disponível via CDN abaixo)
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    
+    // Procura aba "Renda"
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('renda')) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    
+    // Encontra linha de cabeçalho (contém "ID do pedido")
+    let headerRow = -1;
+    for(let i = 0; i < Math.min(10, raw.length); i++) {
+      if(raw[i].some(c => String(c).includes('ID do pedido'))) {
+        headerRow = i; break;
+      }
+    }
+    if(headerRow < 0) { toast('⚠️ Formato não reconhecido. Use o export da Shopee.', true); return; }
+    
+    const headers = raw[headerRow].map(h => String(h).trim());
+    const getCol = (name) => headers.findIndex(h => h.includes(name));
+    
+    const colId       = getCol('ID do pedido');
+    const colVer      = getCol('Ver');
+    const colNome     = getCol('Nome do produto');
+    const colData     = getCol('Data de conclusão do pagamento');
+    const colLiberado = getCol('Quantia total lançada');
+    const colPreco    = getCol('Preço do produto');
+    const colComissao = getCol('Taxa de comissão líquida');
+    const colServico  = getCol('Taxa de serviço líquida');
+    const colAfiliado = getCol('Taxa de comissão Afiliados');
+    const colDevolFacil = getCol('Taxa de Devolução Fácil');
+    const colReembolso = getCol('Valor do Reembolso');
+    
+    // Mapear nomes de produto por pedido (linhas SKU)
+    const nomesPorPedido = {};
+    for(let i = headerRow+1; i < raw.length; i++) {
+      const row = raw[i];
+      if(String(row[colVer]).trim() === 'Sku' && row[colId] && row[colNome]) {
+        const id = String(row[colId]).trim();
+        const nome = String(row[colNome]).trim();
+        if(!nomesPorPedido[id]) nomesPorPedido[id] = [];
+        if(nome && nome !== '-') nomesPorPedido[id].push(nome);
+      }
+    }
+    
+    // Processar apenas linhas Order
+    shopeeData = [];
+    for(let i = headerRow+1; i < raw.length; i++) {
+      const row = raw[i];
+      if(String(row[colVer]).trim() !== 'Order') continue;
+      const id = String(row[colId] || '').trim();
+      if(!id) continue;
+      
+      const dataVal = row[colData];
+      let dataStr = '';
+      if(dataVal instanceof Date) {
+        dataStr = dataVal.toLocaleDateString('pt-BR');
+      } else if(dataVal) {
+        dataStr = String(dataVal).substring(0,10);
+        // converter YYYY-MM-DD para DD/MM/YYYY
+        if(dataStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [y,m,d] = dataStr.split('-');
+          dataStr = `${d}/${m}/${y}`;
+        }
+      }
+      
+      const n = v => { const x = parseFloat(String(v).replace(',','.')); return isNaN(x) ? 0 : x; };
+      const preco     = n(row[colPreco]);
+      const liberado  = n(row[colLiberado]);
+      const comissao  = n(row[colComissao]);
+      const servico   = n(row[colServico]);
+      const afiliado  = n(row[colAfiliado]);
+      const devolFacil= n(row[colDevolFacil]);
+      const reembolso = n(row[colReembolso]);
+      const outrasTaxas = afiliado + devolFacil;
+      
+      shopeeData.push({
+        id, 
+        nome: (nomesPorPedido[id] || []).join(' / ') || '-',
+        data: dataStr,
+        preco, liberado, comissao, servico, outrasTaxas, reembolso,
+        totalTaxas: comissao + servico + outrasTaxas
+      });
+    }
+    
+    renderShopeeResultado();
+    setSyncLabel("Sincronizado ✓");
+    toast(`✅ ${shopeeData.length} pedidos importados da Shopee`);
+  } catch(err) {
+    console.error(err);
+    toast('⚠️ Erro ao ler arquivo: ' + err.message, true);
+    setSyncLabel("Sincronizado ✓");
+  }
+}
+
+function renderShopeeResultado() {
+  if(!shopeeData.length) return;
+  
+  document.getElementById('shopee-upload-area').style.display = 'none';
+  document.getElementById('shopee-resultado').style.display = 'block';
+  document.getElementById('shopee-total-pedidos').textContent = shopeeData.length;
+  
+  // Período
+  const datas = shopeeData.map(p => p.data).filter(Boolean);
+  if(datas.length) {
+    document.getElementById('shopee-periodo').textContent = datas[datas.length-1] + ' — ' + datas[0];
+  }
+  
+  // KPIs
+  const totPreco    = shopeeData.reduce((s,p) => s + p.preco, 0);
+  const totLiberado = shopeeData.reduce((s,p) => s + p.liberado, 0);
+  const totComissao = shopeeData.reduce((s,p) => s + p.comissao, 0);
+  const totServico  = shopeeData.reduce((s,p) => s + p.servico, 0);
+  const totOutras   = shopeeData.reduce((s,p) => s + p.outrasTaxas, 0);
+  const totTaxas    = shopeeData.reduce((s,p) => s + p.totalTaxas, 0);
+  const taxaPct     = totPreco > 0 ? (Math.abs(totTaxas) / totPreco * 100) : 0;
+  
+  document.getElementById('shopee-kpis').innerHTML = `
+    <div class="sum-card ok"><div class="lbl">Receita Bruta</div><div class="val" style="font-size:16px">${R(totPreco)}</div><div class="sub">preço dos produtos</div></div>
+    <div class="sum-card danger"><div class="lbl">Comissão Shopee</div><div class="val" style="font-size:16px">${R(totComissao)}</div><div class="sub">taxa de comissão</div></div>
+    <div class="sum-card danger"><div class="lbl">Taxa de Serviço</div><div class="val" style="font-size:16px">${R(totServico)}</div><div class="sub">taxa líquida</div></div>
+    <div class="sum-card warn"><div class="lbl">Outras Taxas</div><div class="val" style="font-size:16px">${R(totOutras)}</div><div class="sub">afiliados + devol. fácil</div></div>
+    <div class="sum-card"><div class="lbl">Total Taxas</div><div class="val" style="font-size:16px">${R(totTaxas)}</div><div class="sub">${taxaPct.toFixed(1)}% da receita</div></div>
+    <div class="sum-card ok"><div class="lbl">Valor Liberado</div><div class="val" style="font-size:16px">${R(totLiberado)}</div><div class="sub">${shopeeData.length} pedidos</div></div>
+  `;
+  
+  renderTabelaShopee(shopeeData);
+}
+
+function renderTabelaShopee(dados) {
+  document.getElementById('shopee-tbody').innerHTML = dados.map(p => `
+    <tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3)">${p.id}</td>
+      <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.nome}">${p.nome}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${p.data}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(p.preco)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(p.comissao)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(p.servico)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">${R(p.outrasTaxas)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--accent)">${R(p.liberado)}</td>
+    </tr>`).join('');
+}
+
+function filtrarTabelaShopee() {
+  const q = (document.getElementById('shopee-busca').value || '').toLowerCase();
+  const filtrado = q ? shopeeData.filter(p => 
+    p.id.toLowerCase().includes(q) || p.nome.toLowerCase().includes(q) || p.data.includes(q)
+  ) : shopeeData;
+  renderTabelaShopee(filtrado);
+}
+
+function exportarShopeeCSV() {
+  if(!shopeeData.length) return;
+  const header = 'ID Pedido,Produto,Data,Preço Bruto,Comissão,Taxa Serviço,Outras Taxas,Valor Liberado';
+  const rows = shopeeData.map(p => 
+    [p.id, '"'+p.nome.replace(/"/g,'""')+'"', p.data, p.preco, p.comissao, p.servico, p.outrasTaxas, p.liberado].join(',')
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='shopee_pedidos.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function limparShopee() {
+  shopeeData = [];
+  document.getElementById('shopee-file-inp').value = '';
+  document.getElementById('shopee-upload-area').style.display = 'block';
+  document.getElementById('shopee-resultado').style.display = 'none';
+  document.getElementById('shopee-busca').value = '';
 }
 
 async function init() {
