@@ -1919,13 +1919,8 @@ ${demoRows.map(r=>`
       const totQtd = linhasVendas.reduce((s,l)=>s+parseInt(l.qtd||0),0);
       const totRec = linhasVendas.reduce((s,l)=>s+(parseFloat((l.receita||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
       const totLuc = linhasVendas.reduce((s,l)=>s+(parseFloat((l.lucro||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
-      return `<tr class="totals-row">
-        <td>TOTAL (${linhasVendas.length} itens)</td>
-        <td>${totQtd}</td>
-        <td>R$ ${totRec.toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d)),".")}</td>
-        <td>R$ ${totLuc.toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d)),".")}</td>
-        <td>—</td>
-      </tr>`;
+      const fR = (n) => "R$ " + n.toFixed(2).replace(".",",");
+      return "<tr style=\"font-weight:700;background:#f0ede6;border-top:2px solid #ddd9d0\"><td>TOTAL (" + linhasVendas.length + " itens)</td><td style=\"text-align:right\">" + totQtd + "</td><td style=\"text-align:right\">" + fR(totRec) + "</td><td style=\"text-align:right\">" + fR(totLuc) + "</td><td>-</td></tr>";
     })() : ""}
   </tbody>
 </table>
