@@ -146,6 +146,57 @@ def ml_custos(item_id):
         "frete": frete_data.get("options", [])
     })
 
+
+# Busca anúncios do vendedor por texto (título ou ID)
+@app.route("/ml/buscar/<user_id>", methods=["GET", "OPTIONS"])
+def ml_buscar(user_id):
+    if request.method == "OPTIONS":
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    q = request.args.get("q", "").strip()
+
+    # Se for um ID de anúncio (MLB...), busca direto
+    if q.upper().startswith("MLB"):
+        r = requests.get(f"https://api.mercadolibre.com/items/{q.upper()}",
+                         headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 200:
+            b = r.json()
+            return jsonify({"items": [{
+                "id": b["id"], "title": b["title"], "price": b.get("price",0),
+                "listing_type_id": b.get("listing_type_id","gold_special"),
+                "category_id": b.get("category_id",""), "thumbnail": b.get("thumbnail","")
+            }]})
+        return jsonify({"items": []})
+
+    # Buscar todos os anúncios ativos e filtrar por título
+    r1 = requests.get(
+        f"https://api.mercadolibre.com/users/{user_id}/items/search?status=active&limit=100",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    ids = r1.json().get("results", [])
+    if not ids:
+        return jsonify({"items": []})
+
+    items = []
+    for i in range(0, len(ids), 20):
+        batch = ids[i:i+20]
+        r2 = requests.get(
+            f"https://api.mercadolibre.com/items?ids={','.join(batch)}",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        for entry in r2.json():
+            if entry.get("code") == 200:
+                b = entry["body"]
+                titulo = b.get("title", "")
+                # Filtrar por texto (se houver query)
+                if not q or q.lower() in titulo.lower():
+                    items.append({
+                        "id": b["id"], "title": titulo, "price": b.get("price",0),
+                        "listing_type_id": b.get("listing_type_id","gold_special"),
+                        "category_id": b.get("category_id",""), "thumbnail": b.get("thumbnail","")
+                    })
+    return jsonify({"items": items})
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port)
