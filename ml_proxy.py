@@ -20,10 +20,6 @@ def cors_headers(resp):
 def after(resp):
     return cors_headers(resp)
 
-@app.route("/options")
-def options_handler():
-    return cors_headers(jsonify({}))
-
 # Troca o code OAuth pelo access_token
 @app.route("/ml/token", methods=["POST", "OPTIONS"])
 def ml_token():
@@ -57,7 +53,6 @@ def ml_anuncios(user_id):
     if request.method == "OPTIONS":
         return jsonify({})
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    # Buscar IDs
     r1 = requests.get(
         f"https://api.mercadolibre.com/users/{user_id}/items/search?status=active&limit=100",
         headers={"Authorization": f"Bearer {token}"}
@@ -65,7 +60,6 @@ def ml_anuncios(user_id):
     ids = r1.json().get("results", [])
     if not ids:
         return jsonify({"items": []})
-    # Buscar detalhes em lote (máx 20 por vez)
     items = []
     for i in range(0, min(len(ids), 60), 20):
         batch = ids[i:i+20]
@@ -81,60 +75,74 @@ def ml_anuncios(user_id):
                     "title": b["title"],
                     "price": b.get("price", 0),
                     "listing_type_id": b.get("listing_type_id", "gold_special"),
+                    "category_id": b.get("category_id", ""),
                     "thumbnail": b.get("thumbnail", "")
                 })
     return jsonify({"items": items})
 
-# Opções de frete para um item
-@app.route("/ml/frete/<item_id>", methods=["GET", "OPTIONS"])
-def ml_frete(item_id):
-    if request.method == "OPTIONS":
-        return jsonify({})
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    resp = requests.get(
-        f"https://api.mercadolibre.com/items/{item_id}/shipping_options",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    return jsonify(resp.json()), resp.status_code
+# Taxa real por categoria + preço (endpoint listing_prices)
+def get_taxa_categoria(token, category_id, price, listing_type):
+    """Busca a comissão real da categoria via API ML"""
+    try:
+        url = f"https://api.mercadolibre.com/sites/MLB/listing_prices?price={price}&category_id={category_id}&listing_type_id={listing_type}"
+        r = requests.get(url, headers={"Authorization": f"Bearer {token}"})
+        data = r.json()
+        # data pode ser lista ou dict
+        if isinstance(data, list):
+            for item in data:
+                if item.get("listing_type_id") == listing_type:
+                    sale_fee = item.get("sale_fee_amount", 0)
+                    sale_pct = item.get("sale_fee_details", {}).get("percentage_fee", 0)
+                    fixed    = item.get("sale_fee_details", {}).get("fixed_fee", 0)
+                    return {"fee_amount": sale_fee, "percentage": sale_pct, "fixed_fee": fixed}
+        elif isinstance(data, dict):
+            sale_fee = data.get("sale_fee_amount", 0)
+            details  = data.get("sale_fee_details", {})
+            return {"fee_amount": sale_fee, "percentage": details.get("percentage_fee", 0), "fixed_fee": details.get("fixed_fee", 0)}
+    except Exception as e:
+        print("Erro taxa categoria:", e)
+    return None
 
-# Custos estimados completos (igual simulador ML)
+# Custos estimados completos (igual simulador ML) — taxa REAL por categoria
 @app.route("/ml/custos/<item_id>", methods=["GET", "OPTIONS"])
 def ml_custos(item_id):
     if request.method == "OPTIONS":
         return jsonify({})
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    
-    # Item details + shipping em paralelo
-    r_item  = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
-                           headers={"Authorization": f"Bearer {token}"})
-    r_frete = requests.get(f"https://api.mercadolibre.com/items/{item_id}/shipping_options",
-                           headers={"Authorization": f"Bearer {token}"})
-    
-    item_data  = r_item.json()
-    frete_data = r_frete.json()
-    
+
+    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
+                          headers={"Authorization": f"Bearer {token}"})
+    item_data = r_item.json()
+
     listing_type = item_data.get("listing_type_id", "gold_special")
     preco        = item_data.get("price", 0)
-    
-    # Comissão por tipo de anúncio
-    comissao_pct = {
-        "gold_pro":     0.19,
-        "gold_special": 0.135,
-        "gold":         0.16,
-        "silver":       0.10,
-        "bronze":       0.05,
-        "free":         0.0
-    }.get(listing_type, 0.135)
-    
+    category_id  = item_data.get("category_id", "")
+
+    # Buscar taxa REAL das duas modalidades (clássico e premium) pela categoria
+    taxas = {}
+    for lt_nome, lt_id in [("classico", "gold_special"), ("premium", "gold_pro")]:
+        t = get_taxa_categoria(token, category_id, preco, lt_id)
+        if t:
+            taxas[lt_nome] = t
+        else:
+            # fallback se a API não retornar
+            pct = 0.135 if lt_id == "gold_special" else 0.165
+            taxas[lt_nome] = {"fee_amount": preco * pct, "percentage": pct * 100, "fixed_fee": 0}
+
+    # Frete
+    r_frete = requests.get(f"https://api.mercadolibre.com/items/{item_id}/shipping_options",
+                           headers={"Authorization": f"Bearer {token}"})
+    frete_data = r_frete.json()
+
     return jsonify({
         "item": {
-            "id":            item_data.get("id"),
-            "title":         item_data.get("title"),
-            "price":         preco,
-            "listing_type":  listing_type,
-            "comissao_pct":  comissao_pct,
-            "comissao_val":  preco * comissao_pct,
+            "id":           item_data.get("id"),
+            "title":        item_data.get("title"),
+            "price":        preco,
+            "listing_type": listing_type,
+            "category_id":  category_id,
         },
+        "taxas": taxas,
         "frete": frete_data.get("options", [])
     })
 
