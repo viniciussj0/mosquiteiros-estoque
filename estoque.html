@@ -2494,18 +2494,20 @@ function simularPrecoManual() {
 
   // Comissão REAL do ML (se anúncio selecionado) ou % padrão
   let pctClassico = 0.16, pctPremium = 0.19;
-  let freteCheio = 0;
+  let freteCheio = 0;        // custo cheio do frete grátis
+  let freteVendedorML = 0;   // o que vendedor paga (frete grátis, já com desconto)
   if(mlCustosData && mlCustosData.taxas) {
     const tc = mlCustosData.taxas.classico, tp = mlCustosData.taxas.premium;
     if(tc && tc.percentage) pctClassico = tc.percentage / 100;
     if(tp && tp.percentage) pctPremium = tp.percentage / 100;
-    const op = mlCustosData.frete || [];
-    if(op.length > 0) freteCheio = op[0].list_cost || op[0].cost || 0;
+    const fg = mlCustosData.frete_gratis || {cheio:0, vendedor:0};
+    freteCheio = fg.cheio || 0;
+    freteVendedorML = fg.vendedor || 0;
   }
 
   const imposto = preco * (impostoPct/100);
   const ads     = preco * (adsPct/100);
-  const freteGratis  = freteCheio * 0.5;   // você paga 50%
+  const freteGratis  = freteVendedorML;    // o que você paga (real ML)
   const freteClientePaga = 0;              // cliente paga, não afeta lucro
 
   // Calcula lucro para um tipo de comissão + modalidade de frete
@@ -2576,7 +2578,7 @@ function simularPrecoManual() {
   }
 
   // Card Shopee (mantém simples, comissão 20% + tarifa fixa)
-  const shFrete = freteCheio * 0.5;
+  const shFrete = freteVendedorML;
   function cardShopee() {
     const comissao = preco * 0.20;
     const tarifa = tarifaShopee(preco);
@@ -2802,13 +2804,12 @@ function renderCustosML() {
   const comissaoVal = taxaInfo.fee_amount || 0;
   const comissaoPct = taxaInfo.percentage || 0;
 
-  let freteCheio = mlCustosData.frete_cheio || 0;
-  let freteVendedorReal = mlCustosData.frete_vendedor || 0;
-  if(freteCheio === 0 && opcoes.length > 0) {
-    freteCheio = opcoes[0].list_cost || opcoes[0].cost || 0;
-    freteVendedorReal = freteCheio * 0.5;
-  }
-  const freteVendedor = freteGratisSel === 'sim' ? freteVendedorReal : 0;
+  const fg = mlCustosData.frete_gratis || {cheio:0, vendedor:0};
+  const fp = mlCustosData.frete_pago || {cheio:0, comprador:0};
+  // Quando oferece grátis: você paga fg.vendedor (custo cheio fg.cheio)
+  // Quando comprador paga: você não paga nada (mas mostramos fp pra referência)
+  const freteCheio = freteGratisSel === 'sim' ? fg.cheio : fp.cheio;
+  const freteVendedor = freteGratisSel === 'sim' ? fg.vendedor : 0;
 
   const totalCustos = comissaoVal + freteVendedor;
   const vocePrecebe = precoProd - totalCustos;
@@ -2857,14 +2858,12 @@ function renderCustosML() {
           <div style="font-size:13px;color:#00a650;margin-top:2px">Nós cobrimos o ${pctCobertura}% pela sua reputação!</div>`;
   } else if(freteGratisSel === 'sim' && freteCheio === 0) {
     html += `<div style="font-size:18px;color:#00a650;font-weight:500">Grátis</div>`;
-  } else if(freteGratisSel === 'nao' && freteCheio > 0) {
-    // Comprador paga: ML aplica ~30% desconto no frete (informativo, não afeta lucro)
-    const freteComprador = freteCheio * 0.70;
+  } else if(freteGratisSel === 'nao' && fp.cheio > 0) {
     html += `
           <div style="font-size:14px;color:#333;margin-bottom:4px">Você não oferece frete grátis</div>
           <div style="font-size:18px;color:#333">
-            <span style="text-decoration:line-through;color:#999;font-size:15px">${R(freteCheio)}</span>
-            <span style="margin-left:8px">- ${R(freteComprador)}</span>
+            <span style="text-decoration:line-through;color:#999;font-size:15px">${R(fp.cheio)}</span>
+            <span style="margin-left:8px">- ${R(fp.comprador)}</span>
           </div>
           <div style="font-size:13px;color:#999;margin-top:2px">Por conta do comprador.</div>`;
   } else {
