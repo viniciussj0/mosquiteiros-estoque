@@ -477,7 +477,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 
         <!-- Resultado preço manual -->
         <div id="sim-manual-resultado" style="display:none;margin-top:12px;display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="sim-manual-cards"></div>
+          <div id="sim-manual-cards"></div>
         </div>
 
       </div>
@@ -2489,18 +2489,33 @@ function simularPrecoManual() {
   const outros     = parseFloat(document.getElementById('sim-outros')?.value) || 0;
   const impostoPct = parseFloat(document.getElementById('sim-imposto')?.value) || 0;
   const adsPct     = parseFloat(document.getElementById('sim-ads')?.value) || 0;
-  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
-  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
-  const freteTipo     = document.getElementById('sim-frete-tipo')?.value || 'gratis';
-  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
-  const freteCusto    = freteTipo === 'gratis' ? freteLiquido : 0;
   const custo      = custoBase + embalagem + outros;
 
   if(custo <= 0) { div.style.display = 'none'; toast('Preencha o custo do produto primeiro!', true); return; }
 
-  const sh  = calcShopee(custo, preco, impostoPct, adsPct, freteCusto);
-  const mlC = calcML(custo, preco, 'classico', impostoPct, adsPct, freteCusto);
-  const mlP = calcML(custo, preco, 'premium',  impostoPct, adsPct, freteCusto);
+  // Comissão REAL do ML (se anúncio selecionado) ou % padrão
+  let pctClassico = 0.16, pctPremium = 0.19;
+  let freteCheio = 0;
+  if(mlCustosData && mlCustosData.taxas) {
+    const tc = mlCustosData.taxas.classico, tp = mlCustosData.taxas.premium;
+    if(tc && tc.percentage) pctClassico = tc.percentage / 100;
+    if(tp && tp.percentage) pctPremium = tp.percentage / 100;
+    const op = mlCustosData.frete || [];
+    if(op.length > 0) freteCheio = op[0].list_cost || op[0].cost || 0;
+  }
+
+  const imposto = preco * (impostoPct/100);
+  const ads     = preco * (adsPct/100);
+  const freteGratis  = freteCheio * 0.5;   // você paga 50%
+  const freteClientePaga = 0;              // cliente paga, não afeta lucro
+
+  // Calcula lucro para um tipo de comissão + modalidade de frete
+  function calc(pct, frete) {
+    const comissao = preco * pct;
+    const lucro = preco - comissao - imposto - ads - frete - custo;
+    const margem = preco > 0 ? (lucro/preco*100) : 0;
+    return { comissao, lucro, margem };
+  }
 
   const linha = (label, valor, cor) =>
     `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
@@ -2508,107 +2523,111 @@ function simularPrecoManual() {
       <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${cor}">${valor}</span>
     </div>`;
 
-  const card = (titulo, icone, corTitulo, corBorda, dados) => `
-    <div style="border:1px solid ${corBorda};border-radius:var(--radius);overflow:hidden">
-      <div style="background:${corBorda}18;padding:10px 14px;border-bottom:1px solid ${corBorda};display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">${icone}</span>
-        <span style="font-size:13px;font-weight:700;color:${corTitulo}">${titulo}</span>
-        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${corTitulo}">${R(preco)}</span>
-      </div>
-      <div style="padding:0 14px 8px">
-        ${dados}
-        <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;background:${dados.includes('Prejuízo')?'var(--danger-light)':'var(--accent2-light)'};margin:8px -14px -8px;padding:8px 14px;border-top:2px solid ${corBorda}">
-          <span style="font-size:13px;font-weight:700">Lucro líquido</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${dados.includes('var(--danger)')&&dados.lastIndexOf('var(--danger)')>dados.lastIndexOf('var(--accent2)')? 'var(--danger)':'var(--accent2)'}">${dados}</span>
-        </div>
-      </div>
-    </div>`;
+  function avalia(margem) {
+    if(simMargemAlvo > 0) {
+      if(margem >= simMargemAlvo) return {txt:'✅ Ideal', cor:'#00a650'};
+      if(margem >= simMargemAlvo-5) return {txt:'⚠️ Justo', cor:'var(--warn)'};
+      return {txt:'🔴 Baixo', cor:'var(--danger)'};
+    }
+    if(margem >= 30) return {txt:'🟢 Ótimo', cor:'#00a650'};
+    if(margem >= 20) return {txt:'✅ Bom', cor:'#00a650'};
+    if(margem >= 10) return {txt:'⚠️ Razoável', cor:'var(--warn)'};
+    if(margem >= 0)  return {txt:'🔴 Apertado', cor:'var(--danger)'};
+    return {txt:'❌ Prejuízo', cor:'var(--danger)'};
+  }
 
-  const rowsShopee = `
-    ${linha('Preço de venda', R(preco), 'var(--text)')}
-    ${linha('− Comissão Shopee (20%)', '− ' + R(sh.comissao), 'var(--danger)')}
-    ${linha('− Tarifa fixa', '− ' + R(sh.tarifa), 'var(--danger)')}
-    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(sh.imposto), 'var(--danger)') : ''}
-    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(sh.ads), 'var(--warn)') : ''}
-    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
-
-  const rowsMLClass = `
-    ${linha('Preço de venda', R(preco), 'var(--text)')}
-    ${linha('− Comissão ML Clássico (16%)', '− ' + R(mlC.comissao), 'var(--danger)')}
-    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlC.imposto), 'var(--danger)') : ''}
-    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlC.ads), 'var(--warn)') : ''}
-    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
-
-  const rowsMLPrem = `
-    ${linha('Preço de venda', R(preco), 'var(--text)')}
-    ${linha('− Comissão ML Premium (19%)', '− ' + R(mlP.comissao), 'var(--danger)')}
-    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlP.imposto), 'var(--danger)') : ''}
-    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlP.ads), 'var(--warn)') : ''}
-    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
-
-  const avSh  = avaliacaoLabel(sh.margem,  simMargemAlvo);
-  const avMlC = avaliacaoLabel(mlC.margem, simMargemAlvo);
-  const avMlP = avaliacaoLabel(mlP.margem, simMargemAlvo);
-
-  document.getElementById('sim-manual-cards').innerHTML = `
-    <!-- Shopee -->
-    <div style="border:1px solid #fca5a5;border-radius:var(--radius);overflow:hidden">
-      <div style="background:#fff5f5;padding:10px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">🛍️</span>
-        <span style="font-size:13px;font-weight:700;color:#d4380d">Shopee</span>
-        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#d4380d">${R(preco)}</span>
-      </div>
-      <div style="padding:0 14px">
-        ${rowsShopee}
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;margin-top:4px;border-top:2px solid #fca5a5">
-          <div>
-            <div style="font-size:13px;font-weight:700">Lucro líquido</div>
-            <div style="font-size:11px;color:${avSh.cor}">${avSh.txt} — Margem: ${sh.margem.toFixed(1)}%</div>
-          </div>
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:${sh.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(sh.lucro)}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ML wrapper com 2 sub-cards -->
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <!-- ML Clássico -->
-      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
+  // Monta um card para um tipo (Clássico/Premium) com 2 sub-resultados de frete
+  function cardML(titulo, icone, pct) {
+    const cg = calc(pct, freteGratis);       // frete grátis (você paga 50%)
+    const cc = calc(pct, freteClientePaga);  // cliente paga
+    const avg = avalia(cg.margem), avc = avalia(cc.margem);
+    const temFrete = freteCheio > 0;
+    return `
+      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
         <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
-          <span style="font-size:14px">🔵</span>
-          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Clássico (16%)</span>
-          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+          <span style="font-size:15px">${icone}</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">${titulo} (${(pct*100).toFixed(1).replace('.',',')}%)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#b7791f">${R(preco)}</span>
         </div>
         <div style="padding:0 14px">
-          ${rowsMLClass}
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
-            <div>
-              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
-              <div style="font-size:11px;color:${avMlC.cor}">${avMlC.txt} — ${mlC.margem.toFixed(1)}%</div>
+          ${linha('Preço de venda', R(preco), 'var(--text)')}
+          ${linha('− Comissão (' + (pct*100).toFixed(1).replace('.',',') + '%)', '− ' + R(cg.comissao), 'var(--danger)')}
+          ${impostoPct>0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(imposto), 'var(--danger)') : ''}
+          ${adsPct>0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(ads), 'var(--warn)') : ''}
+          ${linha('− Custo do produto', '− ' + R(custo), 'var(--text2)')}
+        </div>
+        <!-- Dois cenários de frete -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#fde58a;margin-top:6px">
+          <div style="background:#fff;padding:10px 14px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${temFrete?'(você paga '+R(freteGratis)+')':''}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:11px;color:${avg.cor}">${avg.txt} ${cg.margem.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${cg.lucro>=0?'#00a650':'var(--danger)'}">${R(cg.lucro)}</span>
             </div>
-            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlC.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlC.lucro)}</span>
+          </div>
+          <div style="background:#fff;padding:10px 14px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📦 Cliente paga o frete</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:11px;color:${avc.cor}">${avc.txt} ${cc.margem.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${cc.lucro>=0?'#00a650':'var(--danger)'}">${R(cc.lucro)}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <!-- ML Premium -->
-      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
-        <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
-          <span style="font-size:14px">⭐</span>
-          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Premium (19%)</span>
-          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+      </div>`;
+  }
+
+  // Card Shopee (mantém simples, comissão 20% + tarifa fixa)
+  const shFrete = freteCheio * 0.5;
+  function cardShopee() {
+    const comissao = preco * 0.20;
+    const tarifa = tarifaShopee(preco);
+    const lucroG = preco - comissao - tarifa - imposto - ads - shFrete - custo;
+    const lucroC = preco - comissao - tarifa - imposto - ads - custo;
+    const mG = preco>0?(lucroG/preco*100):0, mC = preco>0?(lucroC/preco*100):0;
+    const avg = avalia(mG), avc = avalia(mC);
+    const temFrete = freteCheio > 0;
+    return `
+      <div style="border:1px solid #fca5a5;border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
+        <div style="background:#fff5f5;padding:10px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px">
+          <span style="font-size:15px">🛍️</span>
+          <span style="font-size:13px;font-weight:700;color:#d4380d">Shopee (20% + tarifa)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#d4380d">${R(preco)}</span>
         </div>
         <div style="padding:0 14px">
-          ${rowsMLPrem}
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
-            <div>
-              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
-              <div style="font-size:11px;color:${avMlP.cor}">${avMlP.txt} — ${mlP.margem.toFixed(1)}%</div>
+          ${linha('Preço de venda', R(preco), 'var(--text)')}
+          ${linha('− Comissão (20%)', '− ' + R(comissao), 'var(--danger)')}
+          ${linha('− Tarifa fixa', '− ' + R(tarifa), 'var(--danger)')}
+          ${impostoPct>0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(imposto), 'var(--danger)') : ''}
+          ${adsPct>0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(ads), 'var(--warn)') : ''}
+          ${linha('− Custo do produto', '− ' + R(custo), 'var(--text2)')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#fca5a5;margin-top:6px">
+          <div style="background:#fff;padding:10px 14px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${temFrete?'(você paga '+R(shFrete)+')':''}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:11px;color:${avg.cor}">${avg.txt} ${mG.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroG>=0?'#00a650':'var(--danger)'}">${R(lucroG)}</span>
             </div>
-            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlP.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlP.lucro)}</span>
+          </div>
+          <div style="background:#fff;padding:10px 14px">
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📦 Cliente paga o frete</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:11px;color:${avc.cor}">${avc.txt} ${mC.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroC>=0?'#00a650':'var(--danger)'}">${R(lucroC)}</span>
+            </div>
           </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+  }
+
+  const aviso = (!mlCustosData) ?
+    `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:var(--radius-sm)">💡 Conecte ao ML e selecione um anúncio para usar a comissão real da categoria e o frete real. Sem isso, usa-se 16%/19% e frete R$ 0.</div>` : '';
+
+  document.getElementById('sim-manual-cards').innerHTML =
+    aviso +
+    cardML('🔵 ML Clássico', '🔵', pctClassico) +
+    cardML('⭐ ML Premium', '⭐', pctPremium) +
+    cardShopee();
 
   div.style.display = 'block';
 }
