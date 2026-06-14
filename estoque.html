@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2825,7 +2826,7 @@ function renderCustosML() {
 
   if(freteGratisSel === 'sim' && freteCheio > 0) {
     html += `
-          <div style="font-size:14px;color:#00a650;margin-bottom:4px">✓ Você oferece frete grátis</div>
+          <div style="font-size:14px;color:#333;margin-bottom:4px">Você oferece frete grátis</div>
           <div style="font-size:18px;color:#333">
             <span style="text-decoration:line-through;color:#999;font-size:15px">${R(freteCheio)}</span>
             <span style="margin-left:8px">- ${R(freteVendedor)}</span>
@@ -2833,6 +2834,16 @@ function renderCustosML() {
           <div style="font-size:13px;color:#00a650;margin-top:2px">Nós cobrimos o 50% pela sua reputação!</div>`;
   } else if(freteGratisSel === 'sim' && freteCheio === 0) {
     html += `<div style="font-size:18px;color:#00a650;font-weight:500">Grátis</div>`;
+  } else if(freteGratisSel === 'nao' && freteCheio > 0) {
+    // Comprador paga: ML aplica ~30% desconto no frete (informativo, não afeta lucro)
+    const freteComprador = freteCheio * 0.70;
+    html += `
+          <div style="font-size:14px;color:#333;margin-bottom:4px">Você não oferece frete grátis</div>
+          <div style="font-size:18px;color:#333">
+            <span style="text-decoration:line-through;color:#999;font-size:15px">${R(freteCheio)}</span>
+            <span style="margin-left:8px">- ${R(freteComprador)}</span>
+          </div>
+          <div style="font-size:13px;color:#999;margin-top:2px">Por conta do comprador.</div>`;
   } else {
     html += `<div style="font-size:15px;color:#00a650">O comprador paga o envio</div>`;
   }
