@@ -392,9 +392,11 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
             <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Nome do Produto</label>
             <input type="text" id="sim-nome" placeholder="Ex: Mosquiteiro Casal" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;outline:none">
           </div>
-          <div>
-            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">CEP Destino</label>
-            <input type="text" id="sim-cep-destino" placeholder="Ex: 01310100" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'');buscarFreteML()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          <div style="grid-column:span 2">
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Anúncio ML</label>
+            <select id="sim-ml-anuncio" onchange="buscarFreteML()" style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none;color:var(--text)">
+              <option value="">🔌 Conecte ao ML para ver seus anúncios</option>
+            </select>
           </div>
           <div>
             <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo do Produto (R$)</label>
@@ -449,7 +451,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
         <!-- Painel Frete ML em tempo real -->
         <div id="ml-frete-painel" style="display:none;margin-top:14px;padding:12px 16px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius)">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-            <div style="font-size:12px;font-weight:600;color:#b7791f">🚚 Frete em tempo real — Mercado Livre</div>
+            <div style="font-size:12px;font-weight:600;color:#b7791f">🛒 Custos Estimados — Mercado Livre</div>
             <button onclick="buscarFreteML()" style="padding:4px 10px;background:#b7791f;color:#fff;border:none;border-radius:var(--radius-sm);font-size:11px;cursor:pointer">🔄 Atualizar</button>
           </div>
           <div id="ml-frete-resultado" style="font-size:12px;color:var(--text2)">Digite o CEP de destino acima para calcular o frete</div>
@@ -2433,7 +2435,7 @@ function simularPrecos() {
 }
 
 function limparSimulador() {
-  ['sim-nome','sim-custo','sim-embalagem','sim-outros','sim-imposto','sim-ads','sim-frete','sim-preco-manual'].forEach(id => {
+  ['sim-nome','sim-custo','sim-embalagem','sim-outros','sim-imposto','sim-ads','sim-preco-manual'].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.value = id.includes('custo') || id.includes('embalagem') || id.includes('outros') ? '0' : '';
   });
@@ -2689,6 +2691,7 @@ async function carregarPerfilML() {
         mlCepOrigem = user.address.zip.replace(/\D/g,'');
       }
       atualizarStatusML(true);
+      await carregarAnunciosML();
     }
   } catch(e) {
     console.error('Erro ao carregar perfil ML:', e);
@@ -2721,70 +2724,140 @@ function logoutML() {
   mlToken = null; mlUserId = null; mlUserNick = null;
   localStorage.removeItem('ml_token');
   atualizarStatusML(false);
-  document.getElementById('ml-frete-resultado').textContent = 'Digite o CEP de destino acima para calcular o frete';
+  const selAnuncio = document.getElementById('sim-ml-anuncio');
+  if(selAnuncio) selAnuncio.innerHTML = '<option value="">🔌 Conecte ao ML para ver seus anúncios</option>';
+  const frRes = document.getElementById('ml-frete-resultado');
+  if(frRes) frRes.textContent = 'Selecione um anúncio acima para calcular o frete';
   toast('Desconectado do Mercado Livre');
 }
 
 async function buscarFreteML() {
-  const cepDest = (document.getElementById('sim-cep-destino')?.value || '').replace(/\D/g,'');
-  const painel  = document.getElementById('ml-frete-painel');
-  const result  = document.getElementById('ml-frete-resultado');
+  const itemId = document.getElementById('sim-ml-anuncio')?.value || '';
+  const painel = document.getElementById('ml-frete-painel');
+  const result = document.getElementById('ml-frete-resultado');
 
   if(!mlToken) return;
   if(painel) painel.style.display = 'block';
-  if(cepDest.length < 8) {
-    if(result) result.innerHTML = '<span style="color:var(--text3)">Digite um CEP completo (8 dígitos)</span>';
+
+  if(!itemId) {
+    if(result) result.innerHTML = '<span style="color:var(--text3)">Selecione um anúncio acima</span>';
     return;
   }
 
-  if(result) result.innerHTML = '<span style="color:var(--text3)">🔄 Calculando frete...</span>';
+  if(result) result.innerHTML = '<span style="color:var(--text3)">🔄 Calculando custos...</span>';
 
   try {
-    // Buscar anúncios do vendedor para pegar um item_id de referência
-    const itemsResp = await fetch(`https://api.mercadolibre.com/users/${mlUserId}/items/search?limit=1`, {
-      headers: {'Authorization': 'Bearer ' + mlToken}
-    });
-    const itemsData = await itemsResp.json();
-    const itemId = itemsData.results?.[0];
+    // Pegar detalhes do item selecionado
+    const selEl  = document.getElementById('sim-ml-anuncio');
+    const selOpt = selEl?.options[selEl.selectedIndex];
+    const nomeProd  = selOpt?.dataset.titulo || itemId;
+    const precoProd = parseFloat(selOpt?.dataset.preco || 0);
+    const tipoProd  = selOpt?.dataset.tipo || 'gold_special'; // listing_type_id
 
-    if(!itemId) {
-      if(result) result.innerHTML = '<span style="color:var(--warn)">⚠️ Nenhum anúncio encontrado na sua conta ML para calcular o frete</span>';
-      return;
-    }
+    // Buscar custos estimados — mesmo endpoint que o simulador do ML usa
+    const custosResp = await fetch(
+      `https://api.mercadolibre.com/items/${itemId}/shipping_options`,
+      {headers: {'Authorization': 'Bearer ' + mlToken}}
+    );
+    const custosData = await custosResp.json();
 
-    // Calcular frete para o item + CEP destino
-    const freteResp = await fetch(`https://api.mercadolibre.com/items/${itemId}/shipping_options?zip_code=${cepDest}`, {
-      headers: {'Authorization': 'Bearer ' + mlToken}
-    });
-    const freteData = await freteResp.json();
+    // Buscar taxas de venda (comissão) para o item
+    const taxaResp = await fetch(
+      `https://api.mercadolibre.com/items/${itemId}`,
+      {headers: {'Authorization': 'Bearer ' + mlToken}}
+    );
+    const itemData = await taxaResp.json();
 
-    if(freteData.options && freteData.options.length > 0) {
-      const opcoes = freteData.options.slice(0, 4);
-      const rows = opcoes.map(op => {
-        const custo = op.list_cost || op.cost || 0;
-        const desc  = op.name || op.shipping_method_type || 'Envio';
-        const dias  = op.estimated_delivery_time?.date ? 
-          `${new Date(op.estimated_delivery_time.date).toLocaleDateString('pt-BR')}` : 
-          (op.estimated_schedule_limit?.date ? new Date(op.estimated_schedule_limit.date).toLocaleDateString('pt-BR') : '—');
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #fde58a;font-size:12px">
-          <span style="color:#b7791f;font-weight:500">📦 ${desc}</span>
-          <span style="color:var(--text3);font-size:11px">Prev: ${dias}</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${custo===0?'var(--accent2)':'var(--danger)'}">
-            ${custo === 0 ? 'Grátis' : R(custo)}
-          </span>
-        </div>`;
-      }).join('');
+    // Extrair % de comissão do listing_type
+    const listingType = itemData.listing_type_id || 'gold_special';
+    const comissaoPct = listingType === 'gold_pro' ? 0.19 :
+                        listingType === 'gold_special' ? 0.135 :
+                        listingType === 'gold' ? 0.16 : 0.135;
+    const comissaoVal = precoProd * comissaoPct;
 
-      if(result) result.innerHTML = `
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">CEP destino: ${cepDest} · Baseado no seu anúncio</div>
-        ${rows}
-        <div style="font-size:10px;color:var(--text3);margin-top:6px">* O ML pode cobrir 50% do frete pela sua reputação</div>`;
+    // Montar opções de frete
+    const opcoes = custosData.options || [];
+
+    // Info do anúncio
+    let html = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 10px;background:#fffbeb;border-radius:var(--radius-sm);border:1px solid #fde58a">
+        <span style="font-size:20px">🛒</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600;color:#b7791f">${nomeProd.substring(0,60)}</div>
+          <div style="font-size:11px;color:var(--text3)">Preço: <strong>${R(precoProd)}</strong> · Tipo: ${listingType}</div>
+        </div>
+      </div>`;
+
+    // Tarifa de venda
+    html += `
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Tarifa de Venda</div>
+        <div style="display:flex;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm)">
+          <span style="font-size:12px;color:var(--text2)">Tipo ${listingType} — ${(comissaoPct*100).toFixed(1)}% por venda</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--danger)">− ${R(comissaoVal)}</span>
+        </div>
+      </div>`;
+
+    // Custo de envio
+    if(opcoes.length > 0) {
+      html += `<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Custo de Envio</div>
+        <div style="border:1px solid #fde58a;border-radius:var(--radius-sm);overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr auto auto auto;background:#fef3c7;padding:6px 10px;gap:8px">
+            <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase">Modalidade</span>
+            <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;text-align:right">Custo cheio</span>
+            <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;text-align:right">ML cobre (50%)</span>
+            <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;text-align:right">Você paga</span>
+          </div>`;
+
+      opcoes.forEach((op, i) => {
+        const custo   = op.list_cost || op.cost || 0;
+        const mlCobre = custo * 0.5;
+        const vocePaga= custo * 0.5;
+        const desc    = op.name || 'Envio padrão';
+        const bg      = i % 2 === 0 ? '#fff' : '#fffbeb';
+        const isGratis = custo === 0;
+        html += `
+          <div style="display:grid;grid-template-columns:1fr auto auto auto;background:${bg};padding:8px 10px;gap:8px;border-top:1px solid #fde58a;align-items:center">
+            <span style="font-size:12px;font-weight:500;color:#b7791f">📦 ${desc}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--text2);min-width:70px">${isGratis?'Grátis':R(custo)}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--accent2);min-width:70px">${isGratis?'—':'− '+R(mlCobre)}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;text-align:right;color:${isGratis?'var(--accent2)':'var(--danger)'};min-width:70px">${isGratis?'✅ Grátis':R(vocePaga)}</span>
+          </div>`;
+      });
+      html += `</div>`;
     } else {
-      if(result) result.innerHTML = '<span style="color:var(--warn)">⚠️ Não foi possível calcular o frete para esse CEP</span>';
+      html += `<div style="padding:8px;color:var(--text3);font-size:12px">⚠️ Opções de frete não disponíveis para este anúncio</div>`;
     }
+
+    // Resumo final — igual ao ML
+    const menorFrete = opcoes.length > 0
+      ? Math.min(...opcoes.map(op => (op.list_cost || op.cost || 0) * 0.5))
+      : 0;
+    const totalCustos = comissaoVal + menorFrete;
+    const vocePrecebe = precoProd - totalCustos;
+
+    html += `
+      <div style="margin-top:12px;border-top:2px solid #fde58a;padding-top:10px">
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px">
+          <span style="color:var(--text2)">Preço do anúncio</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:600">${R(precoProd)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px">
+          <span style="color:var(--text2)">Custos estimados</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--danger)">− ${R(totalCustos)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:${vocePrecebe>=0?'var(--accent2-light)':'var(--danger-light)'};border-radius:var(--radius-sm);margin-top:6px">
+          <span style="font-size:14px;font-weight:700">Você recebe</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${vocePrecebe>=0?'var(--accent2)':'var(--danger)'}">${R(vocePrecebe)}</span>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">* Frete com 50% de cobertura ML pela sua reputação · Sem custo de produto deduzido</div>
+      </div>`;
+
+    if(result) result.innerHTML = html;
+
   } catch(e) {
     console.error('Erro frete ML:', e);
-    if(result) result.innerHTML = '<span style="color:var(--danger)">⚠️ Erro ao buscar frete. Tente novamente.</span>';
+    if(result) result.innerHTML = '<span style="color:var(--danger)">⚠️ Erro ao buscar dados. Verifique sua conexão com o ML.</span>';
   }
 }
 
