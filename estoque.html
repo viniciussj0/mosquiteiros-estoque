@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2803,9 +2802,13 @@ function renderCustosML() {
   const comissaoVal = taxaInfo.fee_amount || 0;
   const comissaoPct = taxaInfo.percentage || 0;
 
-  let freteCheio = 0;
-  if(opcoes.length > 0) freteCheio = opcoes[0].list_cost || opcoes[0].cost || 0;
-  const freteVendedor = freteGratisSel === 'sim' ? (freteCheio * 0.5) : 0;
+  let freteCheio = mlCustosData.frete_cheio || 0;
+  let freteVendedorReal = mlCustosData.frete_vendedor || 0;
+  if(freteCheio === 0 && opcoes.length > 0) {
+    freteCheio = opcoes[0].list_cost || opcoes[0].cost || 0;
+    freteVendedorReal = freteCheio * 0.5;
+  }
+  const freteVendedor = freteGratisSel === 'sim' ? freteVendedorReal : 0;
 
   const totalCustos = comissaoVal + freteVendedor;
   const vocePrecebe = precoProd - totalCustos;
@@ -2844,13 +2847,14 @@ function renderCustosML() {
         <div style="text-align:right;padding-top:4px">`;
 
   if(freteGratisSel === 'sim' && freteCheio > 0) {
+    const pctCobertura = freteCheio > 0 ? Math.round((1 - freteVendedor/freteCheio) * 100) : 50;
     html += `
           <div style="font-size:14px;color:#333;margin-bottom:4px">Você oferece frete grátis</div>
           <div style="font-size:18px;color:#333">
             <span style="text-decoration:line-through;color:#999;font-size:15px">${R(freteCheio)}</span>
             <span style="margin-left:8px">- ${R(freteVendedor)}</span>
           </div>
-          <div style="font-size:13px;color:#00a650;margin-top:2px">Nós cobrimos o 50% pela sua reputação!</div>`;
+          <div style="font-size:13px;color:#00a650;margin-top:2px">Nós cobrimos o ${pctCobertura}% pela sua reputação!</div>`;
   } else if(freteGratisSel === 'sim' && freteCheio === 0) {
     html += `<div style="font-size:18px;color:#00a650;font-weight:500">Grátis</div>`;
   } else if(freteGratisSel === 'nao' && freteCheio > 0) {
