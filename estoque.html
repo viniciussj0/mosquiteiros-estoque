@@ -394,9 +394,8 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           </div>
           <div style="grid-column:span 2">
             <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Anúncio ML</label>
-            <select id="sim-ml-anuncio" onchange="buscarFreteML()" style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none;color:var(--text)">
-              <option value="">🔌 Conecte ao ML para ver seus anúncios</option>
-            </select>
+            <input type="text" id="sim-ml-busca" placeholder="🔌 Conecte ao ML primeiro" oninput="buscarAnunciosTexto()" autocomplete="off" style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none;color:var(--text)">
+            <input type="hidden" id="sim-ml-anuncio" value="">
           </div>
           <div>
             <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo do Produto (R$)</label>
@@ -448,13 +447,20 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           <span id="sim-margem-alvo-label" style="font-size:12px;color:var(--text3)">Mostrando todas as faixas</span>
         </div>
 
-        <!-- Painel Frete ML em tempo real -->
-        <div id="ml-frete-painel" style="display:none;margin-top:14px;padding:12px 16px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius)">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-            <div style="font-size:12px;font-weight:600;color:#b7791f">🛒 Custos Estimados — Mercado Livre</div>
-            <button onclick="buscarFreteML()" style="padding:4px 10px;background:#b7791f;color:#fff;border:none;border-radius:var(--radius-sm);font-size:11px;cursor:pointer">🔄 Atualizar</button>
+        <!-- Resultados da busca de anúncios -->
+        <div id="ml-busca-resultados" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:var(--radius);max-height:280px;overflow-y:auto;background:#fff"></div>
+
+        <!-- Painel Custos Estimados (visual ML) -->
+        <div id="ml-frete-painel" style="display:none;margin-top:14px">
+          <div style="background:#fff;border:1px solid #e6e6e6;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+            <div style="background:#f5f5f5;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ededed">
+              <span style="font-size:15px;font-weight:600;color:#333">Custos estimados</span>
+              <button onclick="buscarFreteML()" style="background:none;border:none;color:#3483fa;font-size:13px;font-weight:500;cursor:pointer">🔄 Atualizar</button>
+            </div>
+            <div id="ml-frete-resultado" style="padding:20px">
+              <span style="color:var(--text3)">Busque e selecione um anúncio acima</span>
+            </div>
           </div>
-          <div id="ml-frete-resultado" style="font-size:12px;color:var(--text2)">Digite o CEP de destino acima para calcular o frete</div>
         </div>
 
         <!-- Preço Manual -->
@@ -2719,10 +2725,15 @@ function logoutML() {
   mlToken = null; mlUserId = null; mlUserNick = null;
   localStorage.removeItem('ml_token');
   atualizarStatusML(false);
-  const selAnuncio = document.getElementById('sim-ml-anuncio');
-  if(selAnuncio) selAnuncio.innerHTML = '<option value="">🔌 Conecte ao ML para ver seus anúncios</option>';
-  const frRes = document.getElementById('ml-frete-resultado');
-  if(frRes) frRes.textContent = 'Selecione um anúncio acima para calcular o frete';
+  const inpBusca = document.getElementById('sim-ml-busca');
+  if(inpBusca) { inpBusca.value = ''; inpBusca.placeholder = '🔌 Conecte ao ML primeiro'; }
+  const hidAnuncio = document.getElementById('sim-ml-anuncio');
+  if(hidAnuncio) hidAnuncio.value = '';
+  const boxRes = document.getElementById('ml-busca-resultados');
+  if(boxRes) boxRes.style.display = 'none';
+  const painel = document.getElementById('ml-frete-painel');
+  if(painel) painel.style.display = 'none';
+  mlCustosData = null;
   toast('Desconectado do Mercado Livre');
 }
 
@@ -2764,82 +2775,66 @@ function renderCustosML() {
   const taxas  = mlCustosData.taxas || {};
   const opcoes = mlCustosData.frete || [];
 
-  const nomeProd = item.title || '';
   const precoProd = item.price || 0;
-
-  // Estado dos seletores (tipo de anúncio + frete grátis)
-  const tipoSel  = document.getElementById('ml-tipo-anuncio')?.value || 'premium';
+  const tipoSel = document.getElementById('ml-tipo-anuncio')?.value || 'premium';
   const freteGratisSel = document.getElementById('ml-frete-gratis')?.value || 'sim';
 
-  // Taxa de venda conforme tipo selecionado
-  const taxaInfo = taxas[tipoSel] || {fee_amount:0, percentage:0, fixed_fee:0};
+  const taxaInfo = taxas[tipoSel] || {fee_amount:0, percentage:0};
   const comissaoVal = taxaInfo.fee_amount || 0;
   const comissaoPct = taxaInfo.percentage || 0;
 
-  // Frete: pega a primeira opção (custo cheio), ML cobre 50%
   let freteCheio = 0;
-  if(opcoes.length > 0) {
-    freteCheio = opcoes[0].list_cost || opcoes[0].cost || 0;
-  }
-  // Se oferece frete grátis: vendedor paga 50% (ML cobre os outros 50%)
-  // Se não oferece: comprador paga, vendedor não tem custo
+  if(opcoes.length > 0) freteCheio = opcoes[0].list_cost || opcoes[0].cost || 0;
   const freteVendedor = freteGratisSel === 'sim' ? (freteCheio * 0.5) : 0;
 
   const totalCustos = comissaoVal + freteVendedor;
   const vocePrecebe = precoProd - totalCustos;
 
+  // Estilo idêntico ML
   let html = `
-    <!-- Cabeçalho produto -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 10px;background:#fffbeb;border-radius:var(--radius-sm);border:1px solid #fde58a">
-      <span style="font-size:20px">🛒</span>
-      <div style="flex:1">
-        <div style="font-size:12px;font-weight:600;color:#b7791f">${nomeProd.substring(0,55)}</div>
-        <div style="font-size:11px;color:var(--text3)">Preço do anúncio: <strong>${R(precoProd)}</strong></div>
-      </div>
-    </div>
-
     <!-- TARIFA DE VENDA -->
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tarifa de Venda</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:12px;color:var(--text2)">Tipo de anúncio:</label>
-          <select id="ml-tipo-anuncio" onchange="renderCustosML()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none">
+    <div style="padding-bottom:20px;border-bottom:1px solid #ededed">
+      <div style="font-size:17px;font-weight:600;color:#333;margin-bottom:16px">Tarifa de venda</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:13px;color:#666;margin-bottom:6px">Tipo de anúncio:</label>
+          <select id="ml-tipo-anuncio" onchange="renderCustosML()" style="width:100%;max-width:280px;padding:12px 14px;border:1px solid #d0d0d0;border-radius:6px;font-size:15px;background:#fff;outline:none;color:#333;cursor:pointer">
             <option value="premium" ${tipoSel==='premium'?'selected':''}>Premium</option>
             <option value="classico" ${tipoSel==='classico'?'selected':''}>Clássico</option>
           </select>
         </div>
-        <div style="text-align:right">
-          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--danger);font-size:14px">− ${R(comissaoVal)}</div>
-          <div style="font-size:11px;color:var(--text3)">Você pagará ${comissaoPct.toFixed(1)}% por cada venda</div>
+        <div style="text-align:right;padding-top:4px">
+          <div style="font-size:22px;font-weight:400;color:#333">- ${R(comissaoVal)}</div>
+          <div style="font-size:13px;color:#999;margin-top:2px">Você pagará ${comissaoPct.toFixed(1).replace('.',',')}% por cada venda.</div>
         </div>
       </div>
     </div>
 
     <!-- CUSTO DE ENVIO -->
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Custo de Envio</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:12px;color:var(--text2)">Frete grátis:</label>
-          <select id="ml-frete-gratis" onchange="renderCustosML()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none">
-            <option value="sim" ${freteGratisSel==='sim'?'selected':''}>✅ Você oferece frete grátis</option>
-            <option value="nao" ${freteGratisSel==='nao'?'selected':''}>❌ Não oferece (cliente paga)</option>
+    <div style="padding-top:20px">
+      <div style="font-size:17px;font-weight:600;color:#333;margin-bottom:16px">Custo de envio</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:13px;color:#666;margin-bottom:6px">Forma de envio:</label>
+          <select id="ml-frete-gratis" onchange="renderCustosML()" style="width:100%;max-width:280px;padding:12px 14px;border:1px solid #d0d0d0;border-radius:6px;font-size:15px;background:#fff;outline:none;color:#333;cursor:pointer">
+            <option value="sim" ${freteGratisSel==='sim'?'selected':''}>Você oferece frete grátis</option>
+            <option value="nao" ${freteGratisSel==='nao'?'selected':''}>Você não oferece frete grátis</option>
           </select>
         </div>
-        <div style="text-align:right">`;
+        <div style="text-align:right;padding-top:4px">`;
 
   if(freteGratisSel === 'sim' && freteCheio > 0) {
     html += `
-          <div style="font-family:'JetBrains Mono',monospace;font-size:13px">
-            <span style="text-decoration:line-through;color:var(--text3)">${R(freteCheio)}</span>
-            <span style="font-weight:700;color:var(--danger);margin-left:6px">− ${R(freteVendedor)}</span>
+          <div style="font-size:14px;color:#00a650;margin-bottom:4px">✓ Você oferece frete grátis</div>
+          <div style="font-size:18px;color:#333">
+            <span style="text-decoration:line-through;color:#999;font-size:15px">${R(freteCheio)}</span>
+            <span style="margin-left:8px">- ${R(freteVendedor)}</span>
           </div>
-          <div style="font-size:11px;color:var(--accent2)">Nós cobrimos 50% pela sua reputação!</div>`;
+          <div style="font-size:13px;color:#00a650;margin-top:2px">Nós cobrimos o 50% pela sua reputação!</div>`;
   } else if(freteGratisSel === 'sim' && freteCheio === 0) {
-    html += `<div style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent2)">Grátis</div>`;
+    html += `<div style="font-size:18px;color:#00a650;font-weight:500">Grátis</div>`;
   } else {
-    html += `<div style="font-size:12px;color:var(--accent2);font-weight:600">Comprador paga o frete</div>`;
+    html += `<div style="font-size:15px;color:#00a650">O comprador paga o envio</div>`;
   }
 
   html += `
@@ -2847,19 +2842,19 @@ function renderCustosML() {
       </div>
     </div>
 
-    <!-- RESUMO -->
-    <div style="border-top:2px solid #fde58a;padding-top:12px">
-      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px">
-        <span style="color:var(--text2)">Preço do anúncio</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-weight:600">${R(precoProd)}</span>
+    <!-- RESUMO FINAL (caixa separada igual ML) -->
+    <div style="margin:20px -20px -20px;background:#f5f5f5;padding:20px;border-top:1px solid #ededed">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+        <span style="font-size:15px;color:#333">Preço do anúncio</span>
+        <span style="font-size:15px;color:#333">${R(precoProd)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px">
-        <span style="color:var(--text2)">Custos estimados</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--danger)">− ${R(totalCustos)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #e0e0e0;padding-bottom:14px">
+        <span style="font-size:15px;color:#333">Custos estimados</span>
+        <span style="font-size:15px;color:#333">- ${R(totalCustos)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:${vocePrecebe>=0?'var(--accent2-light)':'var(--danger-light)'};border-radius:var(--radius-sm);margin-top:8px">
-        <span style="font-size:15px;font-weight:700">Você recebe</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:${vocePrecebe>=0?'var(--accent2)':'var(--danger)'}">${R(vocePrecebe)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px">
+        <span style="font-size:24px;font-weight:600;color:#333">Você recebe</span>
+        <span style="font-size:28px;font-weight:700;color:${vocePrecebe>=0?'#00a650':'#e63d3d'}">${R(vocePrecebe)}</span>
       </div>
     </div>`;
 
@@ -3058,36 +3053,69 @@ function limparShopee() {
   document.getElementById('shopee-busca').value = '';
 }
 
+let mlBuscaTimeout = null;
+
+// Quando conecta, habilita o campo de busca
 async function carregarAnunciosML() {
   if(!mlToken || !mlUserId) return;
-  const sel = document.getElementById('sim-ml-anuncio');
-  if(!sel) return;
-  sel.innerHTML = '<option value="">🔄 Carregando anúncios...</option>';
-  try {
-    const resp = await fetch(ML_PROXY + '/ml/anuncios/' + mlUserId, {
-      headers: {'Authorization': 'Bearer ' + mlToken}
-    });
-    const data = await resp.json();
-    const items = data.items || [];
-    if(!items.length) {
-      sel.innerHTML = '<option value="">Nenhum anúncio ativo encontrado</option>';
-      return;
-    }
-    sel.innerHTML = '<option value="">Selecione um anúncio...</option>';
-    items.forEach(b => {
-      const opt = document.createElement('option');
-      opt.value = b.id;
-      opt.dataset.titulo = b.title;
-      opt.dataset.preco  = b.price || 0;
-      opt.dataset.tipo   = b.listing_type_id || 'gold_special';
-      opt.textContent = `${b.title.substring(0,50)} — ${R(b.price)}`;
-      sel.appendChild(opt);
-    });
-    toast(`✅ ${items.length} anúncios carregados`);
-  } catch(e) {
-    console.error('Erro ao carregar anúncios:', e);
-    sel.innerHTML = '<option value="">⚠️ Erro ao carregar anúncios</option>';
+  const inp = document.getElementById('sim-ml-busca');
+  if(inp) {
+    inp.placeholder = '🔍 Digite o título ou número do anúncio...';
+    inp.disabled = false;
   }
+}
+
+// Busca anúncios conforme digita (debounce)
+async function buscarAnunciosTexto() {
+  const q = (document.getElementById('sim-ml-busca')?.value || '').trim();
+  const box = document.getElementById('ml-busca-resultados');
+  if(!box) return;
+
+  if(!mlToken) { return; }
+
+  clearTimeout(mlBuscaTimeout);
+  if(q.length < 1) { box.style.display = 'none'; return; }
+
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:14px;color:var(--text3);font-size:13px">🔄 Buscando...</div>';
+
+  mlBuscaTimeout = setTimeout(async () => {
+    try {
+      const resp = await fetch(ML_PROXY + '/ml/buscar/' + mlUserId + '?q=' + encodeURIComponent(q), {
+        headers: {'Authorization': 'Bearer ' + mlToken}
+      });
+      const data = await resp.json();
+      const items = data.items || [];
+
+      if(!items.length) {
+        box.innerHTML = '<div style="padding:14px;color:var(--text3);font-size:13px">Nenhum anúncio encontrado</div>';
+        return;
+      }
+
+      box.innerHTML = items.slice(0, 20).map(b => `
+        <div onclick="selecionarAnuncioML('${b.id}', '${(b.title||'').replace(/'/g,"\\'")}', ${b.price||0})"
+             style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .15s"
+             onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
+          <img src="${b.thumbnail||''}" style="width:44px;height:44px;border-radius:6px;object-fit:cover;background:#eee" onerror="this.style.visibility='hidden'">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title||''}</div>
+            <div style="font-size:12px;color:var(--text3)">${b.id} · ${R(b.price||0)}</div>
+          </div>
+          <span style="color:#3483fa;font-size:18px">›</span>
+        </div>`).join('');
+    } catch(e) {
+      console.error('Erro busca:', e);
+      box.innerHTML = '<div style="padding:14px;color:var(--danger);font-size:13px">⚠️ Erro ao buscar</div>';
+    }
+  }, 400);
+}
+
+// Seleciona um anúncio da lista de resultados
+function selecionarAnuncioML(id, titulo, preco) {
+  document.getElementById('sim-ml-anuncio').value = id;
+  document.getElementById('sim-ml-busca').value = titulo;
+  document.getElementById('ml-busca-resultados').style.display = 'none';
+  buscarFreteML();
 }
 
 async function init() {
