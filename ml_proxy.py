@@ -129,34 +129,54 @@ def ml_custos(item_id):
             pct = 0.135 if lt_id == "gold_special" else 0.165
             taxas[lt_nome] = {"fee_amount": preco * pct, "percentage": pct * 100, "fixed_fee": 0}
 
-    # Frete grátis — endpoint correto do simulador ML (custo que o vendedor paga)
-    # GET /users/{user_id}/shipping_options/free?item_id={item_id}
+    # Frete — endpoint do simulador ML com parâmetros completos
+    # Faz 2 chamadas: free_shipping=True (você oferece) e False (comprador paga)
     seller_id = item_data.get("seller_id")
-    frete_options = []
-    free_cost_full = 0      # custo cheio do frete
-    free_cost_seller = 0    # o que o vendedor paga (com desconto reputação)
 
-    try:
-        r_free = requests.get(
-            f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free?item_id={item_id}",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        fr = r_free.json()
-        # A resposta tem coverage.all_country com list_cost, cost, discount
-        cov = fr.get("coverage", {}).get("all_country", {})
-        if cov:
-            free_cost_seller = cov.get("list_cost", 0)   # o que vendedor paga (já com desconto)
-            # promoted_amount = valor cheio antes do desconto
-            disc = cov.get("discount", {})
-            free_cost_full = disc.get("promoted_amount", free_cost_seller) if disc else free_cost_seller
-            frete_options = [{
-                "name": "Mercado Envios (frete grátis)",
-                "list_cost": free_cost_full,
-                "seller_cost": free_cost_seller,
-                "cost": cov.get("cost", 0)
-            }]
-    except Exception as e:
-        print("free shipping erro:", e)
+    def get_frete(free_shipping_bool):
+        try:
+            params = {
+                "item_id": item_id,
+                "item_price": preco,
+                "listing_type_id": listing_type,
+                "verbose": "true",
+                "free_shipping": "true" if free_shipping_bool else "false"
+            }
+            r = requests.get(
+                f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"}
+            )
+            return r.json()
+        except Exception as e:
+            print("frete erro:", e)
+            return {}
+
+    # Frete grátis (você oferece) — você paga parte, ML cobre o resto
+    fr_gratis = get_frete(True)
+    cov_g = fr_gratis.get("coverage", {}).get("all_country", {})
+    frete_gratis_cheio   = 0
+    frete_gratis_vendedor = 0
+    if cov_g:
+        frete_gratis_vendedor = cov_g.get("list_cost", 0)  # o que você paga (com desconto)
+        disc = cov_g.get("discount", {})
+        if disc and disc.get("promoted_amount"):
+            frete_gratis_cheio = disc.get("promoted_amount")
+        else:
+            frete_gratis_cheio = frete_gratis_vendedor
+
+    # Frete não grátis (comprador paga)
+    fr_pago = get_frete(False)
+    cov_p = fr_pago.get("coverage", {}).get("all_country", {})
+    frete_pago_cheio    = 0
+    frete_pago_comprador = 0
+    if cov_p:
+        frete_pago_comprador = cov_p.get("list_cost", 0)
+        disc_p = cov_p.get("discount", {})
+        if disc_p and disc_p.get("promoted_amount"):
+            frete_pago_cheio = disc_p.get("promoted_amount")
+        else:
+            frete_pago_cheio = frete_pago_comprador
 
     return jsonify({
         "item": {
@@ -167,9 +187,14 @@ def ml_custos(item_id):
             "category_id":  category_id,
         },
         "taxas": taxas,
-        "frete": frete_options,
-        "frete_cheio": free_cost_full,
-        "frete_vendedor": free_cost_seller
+        "frete_gratis": {
+            "cheio":    frete_gratis_cheio,
+            "vendedor": frete_gratis_vendedor
+        },
+        "frete_pago": {
+            "cheio":     frete_pago_cheio,
+            "comprador": frete_pago_comprador
+        }
     })
 
 
