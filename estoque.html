@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2617,6 +2618,7 @@ function limparPrecoManual() {
 // ── INTEGRAÇÃO MERCADO LIVRE ──────────────────────────────────────────────────
 const ML_APP_ID    = "1201355025627006";
 const ML_REDIRECT  = "https://viniciussj0.github.io/mosquiteiros-estoque/estoque.html";
+const ML_PROXY     = "https://powerful-acceptance-production-4ae8.up.railway.app";
 let mlToken        = null;
 let mlUserId       = null;
 let mlUserNick     = null;
@@ -2646,16 +2648,10 @@ async function checkMLCallback() {
   setSyncLabel("Conectando ao ML...");
   try {
     // Usa um proxy público para fazer a troca (evita CORS)
-    const resp = await fetch('https://api.mercadolibre.com/oauth/token', {
+    const resp = await fetch(ML_PROXY + '/ml/token', {
       method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'},
-      body: new URLSearchParams({
-        grant_type:    'authorization_code',
-        client_id:     ML_APP_ID,
-        client_secret: 'euZzNNUy4ZkmDI1acA3fxY47PULTvVuZ',
-        code:          code,
-        redirect_uri:  ML_REDIRECT
-      })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: code})
     });
     const data = await resp.json();
     if(data.access_token) {
@@ -2679,7 +2675,7 @@ async function checkMLCallback() {
 async function carregarPerfilML() {
   if(!mlToken) return;
   try {
-    const resp = await fetch('https://api.mercadolibre.com/users/me', {
+    const resp = await fetch(ML_PROXY + '/ml/me', {
       headers: {'Authorization': 'Bearer ' + mlToken}
     });
     const user = await resp.json();
@@ -2747,36 +2743,18 @@ async function buscarFreteML() {
   if(result) result.innerHTML = '<span style="color:var(--text3)">🔄 Calculando custos...</span>';
 
   try {
-    // Pegar detalhes do item selecionado
-    const selEl  = document.getElementById('sim-ml-anuncio');
-    const selOpt = selEl?.options[selEl.selectedIndex];
-    const nomeProd  = selOpt?.dataset.titulo || itemId;
-    const precoProd = parseFloat(selOpt?.dataset.preco || 0);
-    const tipoProd  = selOpt?.dataset.tipo || 'gold_special'; // listing_type_id
+    const resp = await fetch(ML_PROXY + '/ml/custos/' + itemId, {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const data = await resp.json();
 
-    // Buscar custos estimados — mesmo endpoint que o simulador do ML usa
-    const custosResp = await fetch(
-      `https://api.mercadolibre.com/items/${itemId}/shipping_options`,
-      {headers: {'Authorization': 'Bearer ' + mlToken}}
-    );
-    const custosData = await custosResp.json();
-
-    // Buscar taxas de venda (comissão) para o item
-    const taxaResp = await fetch(
-      `https://api.mercadolibre.com/items/${itemId}`,
-      {headers: {'Authorization': 'Bearer ' + mlToken}}
-    );
-    const itemData = await taxaResp.json();
-
-    // Extrair % de comissão do listing_type
-    const listingType = itemData.listing_type_id || 'gold_special';
-    const comissaoPct = listingType === 'gold_pro' ? 0.19 :
-                        listingType === 'gold_special' ? 0.135 :
-                        listingType === 'gold' ? 0.16 : 0.135;
-    const comissaoVal = precoProd * comissaoPct;
-
-    // Montar opções de frete
-    const opcoes = custosData.options || [];
+    const item   = data.item || {};
+    const opcoes = data.frete || [];
+    const nomeProd     = item.title || itemId;
+    const precoProd    = item.price || 0;
+    const listingType  = item.listing_type || 'gold_special';
+    const comissaoPct  = item.comissao_pct || 0.135;
+    const comissaoVal  = item.comissao_val || (precoProd * comissaoPct);
 
     // Info do anúncio
     let html = `
@@ -2808,13 +2786,12 @@ async function buscarFreteML() {
             <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;text-align:right">ML cobre (50%)</span>
             <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;text-align:right">Você paga</span>
           </div>`;
-
       opcoes.forEach((op, i) => {
-        const custo   = op.list_cost || op.cost || 0;
-        const mlCobre = custo * 0.5;
-        const vocePaga= custo * 0.5;
-        const desc    = op.name || 'Envio padrão';
-        const bg      = i % 2 === 0 ? '#fff' : '#fffbeb';
+        const custo    = op.list_cost || op.cost || 0;
+        const mlCobre  = custo * 0.5;
+        const vocePaga = custo * 0.5;
+        const desc     = op.name || 'Envio padrão';
+        const bg       = i % 2 === 0 ? '#fff' : '#fffbeb';
         const isGratis = custo === 0;
         html += `
           <div style="display:grid;grid-template-columns:1fr auto auto auto;background:${bg};padding:8px 10px;gap:8px;border-top:1px solid #fde58a;align-items:center">
@@ -2829,7 +2806,7 @@ async function buscarFreteML() {
       html += `<div style="padding:8px;color:var(--text3);font-size:12px">⚠️ Opções de frete não disponíveis para este anúncio</div>`;
     }
 
-    // Resumo final — igual ao ML
+    // Resumo final
     const menorFrete = opcoes.length > 0
       ? Math.min(...opcoes.map(op => (op.list_cost || op.cost || 0) * 0.5))
       : 0;
@@ -2857,9 +2834,2975 @@ async function buscarFreteML() {
 
   } catch(e) {
     console.error('Erro frete ML:', e);
-    if(result) result.innerHTML = '<span style="color:var(--danger)">⚠️ Erro ao buscar dados. Verifique sua conexão com o ML.</span>';
+    if(result) result.innerHTML = '<span style="color:var(--danger)">⚠️ Erro ao buscar dados. Tente novamente.</span>';
   }
 }
+
+
+// ── IMPORTADOR SHOPEE ─────────────────────────────────────────────────────────
+let shopeeData = [];
+
+function handleShopeeDrop(e) {
+  e.preventDefault();
+  document.getElementById('shopee-upload-area').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if(file) processShopeeFile(file);
+}
+
+function handleShopeeFile(input) {
+  const file = input.files[0];
+  if(file) processShopeeFile(file);
+}
+
+async function processShopeeFile(file) {
+  try {
+    setSyncLabel("Lendo arquivo...");
+    const buf = await file.arrayBuffer();
+    
+    // Usar SheetJS (já disponível via CDN abaixo)
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    
+    // Procura aba "Renda"
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes('renda')) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    
+    // Encontra linha de cabeçalho (contém "ID do pedido")
+    let headerRow = -1;
+    for(let i = 0; i < Math.min(10, raw.length); i++) {
+      if(raw[i].some(c => String(c).includes('ID do pedido'))) {
+        headerRow = i; break;
+      }
+    }
+    if(headerRow < 0) { toast('⚠️ Formato não reconhecido. Use o export da Shopee.', true); return; }
+    
+    const headers = raw[headerRow].map(h => String(h).trim());
+    const getCol = (name) => headers.findIndex(h => h.includes(name));
+    
+    const colId       = getCol('ID do pedido');
+    const colVer      = getCol('Ver');
+    const colNome     = getCol('Nome do produto');
+    const colData     = getCol('Data de conclusão do pagamento');
+    const colLiberado = getCol('Quantia total lançada');
+    const colPreco    = getCol('Preço do produto');
+    const colComissao = getCol('Taxa de comissão líquida');
+    const colServico  = getCol('Taxa de serviço líquida');
+    const colAfiliado = getCol('Taxa de comissão Afiliados');
+    const colDevolFacil = getCol('Taxa de Devolução Fácil');
+    const colReembolso = getCol('Valor do Reembolso');
+    
+    // Mapear nomes de produto por pedido (linhas SKU)
+    const nomesPorPedido = {};
+    for(let i = headerRow+1; i < raw.length; i++) {
+      const row = raw[i];
+      if(String(row[colVer]).trim() === 'Sku' && row[colId] && row[colNome]) {
+        const id = String(row[colId]).trim();
+        const nome = String(row[colNome]).trim();
+        if(!nomesPorPedido[id]) nomesPorPedido[id] = [];
+        if(nome && nome !== '-') nomesPorPedido[id].push(nome);
+      }
+    }
+    
+    // Processar apenas linhas Order
+    shopeeData = [];
+    for(let i = headerRow+1; i < raw.length; i++) {
+      const row = raw[i];
+      if(String(row[colVer]).trim() !== 'Order') continue;
+      const id = String(row[colId] || '').trim();
+      if(!id) continue;
+      
+      const dataVal = row[colData];
+      let dataStr = '';
+      if(dataVal instanceof Date) {
+        dataStr = dataVal.toLocaleDateString('pt-BR');
+      } else if(dataVal) {
+        dataStr = String(dataVal).substring(0,10);
+        // converter YYYY-MM-DD para DD/MM/YYYY
+        if(dataStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const [y,m,d] = dataStr.split('-');
+          dataStr = `${d}/${m}/${y}`;
+        }
+      }
+      
+      const n = v => { const x = parseFloat(String(v).replace(',','.')); return isNaN(x) ? 0 : x; };
+      const preco     = n(row[colPreco]);
+      const liberado  = n(row[colLiberado]);
+      const comissao  = n(row[colComissao]);
+      const servico   = n(row[colServico]);
+      const afiliado  = n(row[colAfiliado]);
+      const devolFacil= n(row[colDevolFacil]);
+      const reembolso = n(row[colReembolso]);
+      const outrasTaxas = afiliado + devolFacil;
+      
+      shopeeData.push({
+        id, 
+        nome: (nomesPorPedido[id] || []).join(' / ') || '-',
+        data: dataStr,
+        preco, liberado, comissao, servico, outrasTaxas, reembolso,
+        totalTaxas: comissao + servico + outrasTaxas
+      });
+    }
+    
+    renderShopeeResultado();
+    setSyncLabel("Sincronizado ✓");
+    toast(`✅ ${shopeeData.length} pedidos importados da Shopee`);
+  } catch(err) {
+    console.error(err);
+    toast('⚠️ Erro ao ler arquivo: ' + err.message, true);
+    setSyncLabel("Sincronizado ✓");
+  }
+}
+
+function renderShopeeResultado() {
+  if(!shopeeData.length) return;
+  
+  document.getElementById('shopee-upload-area').style.display = 'none';
+  document.getElementById('shopee-resultado').style.display = 'block';
+  document.getElementById('shopee-total-pedidos').textContent = shopeeData.length;
+  
+  // Período
+  const datas = shopeeData.map(p => p.data).filter(Boolean);
+  if(datas.length) {
+    document.getElementById('shopee-periodo').textContent = datas[datas.length-1] + ' — ' + datas[0];
+  }
+  
+  // KPIs
+  const totPreco    = shopeeData.reduce((s,p) => s + p.preco, 0);
+  const totLiberado = shopeeData.reduce((s,p) => s + p.liberado, 0);
+  const totComissao = shopeeData.reduce((s,p) => s + p.comissao, 0);
+  const totServico  = shopeeData.reduce((s,p) => s + p.servico, 0);
+  const totOutras   = shopeeData.reduce((s,p) => s + p.outrasTaxas, 0);
+  const totTaxas    = shopeeData.reduce((s,p) => s + p.totalTaxas, 0);
+  const taxaPct     = totPreco > 0 ? (Math.abs(totTaxas) / totPreco * 100) : 0;
+  
+  document.getElementById('shopee-kpis').innerHTML = `
+    <div class="sum-card ok"><div class="lbl">Receita Bruta</div><div class="val" style="font-size:16px">${R(totPreco)}</div><div class="sub">preço dos produtos</div></div>
+    <div class="sum-card danger"><div class="lbl">Comissão Shopee</div><div class="val" style="font-size:16px">${R(totComissao)}</div><div class="sub">taxa de comissão</div></div>
+    <div class="sum-card danger"><div class="lbl">Taxa de Serviço</div><div class="val" style="font-size:16px">${R(totServico)}</div><div class="sub">taxa líquida</div></div>
+    <div class="sum-card warn"><div class="lbl">Outras Taxas</div><div class="val" style="font-size:16px">${R(totOutras)}</div><div class="sub">afiliados + devol. fácil</div></div>
+    <div class="sum-card"><div class="lbl">Total Taxas</div><div class="val" style="font-size:16px">${R(totTaxas)}</div><div class="sub">${taxaPct.toFixed(1)}% da receita</div></div>
+    <div class="sum-card ok"><div class="lbl">Valor Liberado</div><div class="val" style="font-size:16px">${R(totLiberado)}</div><div class="sub">${shopeeData.length} pedidos</div></div>
+  `;
+  
+  renderTabelaShopee(shopeeData);
+}
+
+function renderTabelaShopee(dados) {
+  document.getElementById('shopee-tbody').innerHTML = dados.map(p => `
+    <tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3)">${p.id}</td>
+      <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.nome}">${p.nome}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${p.data}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(p.preco)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(p.comissao)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(p.servico)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">${R(p.outrasTaxas)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--accent)">${R(p.liberado)}</td>
+    </tr>`).join('');
+}
+
+function filtrarTabelaShopee() {
+  const q = (document.getElementById('shopee-busca').value || '').toLowerCase();
+  const filtrado = q ? shopeeData.filter(p => 
+    p.id.toLowerCase().includes(q) || p.nome.toLowerCase().includes(q) || p.data.includes(q)
+  ) : shopeeData;
+  renderTabelaShopee(filtrado);
+}
+
+function exportarShopeeCSV() {
+  if(!shopeeData.length) return;
+  const header = 'ID Pedido,Produto,Data,Preço Bruto,Comissão,Taxa Serviço,Outras Taxas,Valor Liberado';
+  const rows = shopeeData.map(p => 
+    [p.id, '"'+p.nome.replace(/"/g,'""')+'"', p.data, p.preco, p.comissao, p.servico, p.outrasTaxas, p.liberado].join(',')
+  );
+  const csv = [header, ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='shopee_pedidos.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function limparShopee() {
+  shopeeData = [];
+  document.getElementById('shopee-file-inp').value = '';
+  document.getElementById('shopee-upload-area').style.display = 'block';
+  document.getElementById('shopee-resultado').style.display = 'none';
+  document.getElementById('shopee-busca').value = '';
+}
+
+async function init() {
+  await lerDados();
+  renderAll();
+  renderTelegram();
+  checkBot();
+  checkMLCallback();
+  setInterval(async()=>{ await lerDados(); renderAll(); }, 30000);
+  setInterval(checkBot, 30000);
+}
+init();
+</script>
+</body>
+</html>async function carregarAnunciosML() {
+  if(!mlToken || !mlUserId) return;
+  const sel = document.getElementById('sim-ml-anuncio');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">🔄 Carregando anúncios...</option>';
+  try {
+    const resp = await fetch(ML_PROXY + '/ml/anuncios/' + mlUserId, {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const data = await resp.json();
+    const items = data.items || [];
+    if(!items.length) {
+      sel.innerHTML = '<option value="">Nenhum anúncio ativo encontrado</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Selecione um anúncio...</option>';
+    items.forEach(b => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.dataset.titulo = b.title;
+      opt.dataset.preco  = b.price || 0;
+      opt.dataset.tipo   = b.listing_type_id || 'gold_special';
+      opt.textContent = `${b.title.substring(0,50)} — ${R(b.price)}`;
+      sel.appendChild(opt);
+    });
+    toast(`✅ ${items.length} anúncios carregados`);
+  } catch(e) {
+    console.error('Erro ao carregar anúncios:', e);
+    sel.innerHTML = '<option value="">⚠️ Erro ao carregar anúncios</option>';
+  }
+}
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinStack — Gestão de Estoque & Financeiro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f3ee;--surface:#fff;--surface2:#f0ede6;--border:#ddd9d0;
+  --text:#1a1917;--text2:#6b6760;--text3:#9d9890;
+  --accent:#1a4a6b;--accent-light:#e8f0f7;
+  --accent2:#2d7d4f;--accent2-light:#e8f4ed;
+  --danger:#b33a2b;--danger-light:#fdf0ee;
+  --warn:#8a5e1a;--warn-light:#fef9ed;
+  --info:#1e4d8c;--info-light:#eef3fb;
+  --radius:10px;--radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)
+}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+.header{background:var(--accent);color:#fff;padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.hbrand{display:flex;align-items:center;gap:12px}
+.hbrand h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.hbrand h1 span{color:#5bc4f5}
+.hbrand small{font-size:11px;font-weight:300;opacity:.7;display:block;margin-top:-2px}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.hdate{font-size:11px;opacity:.7;font-family:'JetBrains Mono',monospace}
+.sync-pill{font-size:10px;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:5px;opacity:.85}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:#5bc4f5;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.tabs{background:var(--surface);border-bottom:1px solid var(--border);padding:0 2rem;display:flex;overflow-x:auto}
+.tab{padding:14px 20px;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.tab:hover{color:var(--accent)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.main{padding:2rem;max-width:1240px;margin:0 auto}
+.page{display:none}.page.active{display:block}
+.sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:2rem}
+.sum-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem;box-shadow:var(--shadow);border-left:3px solid var(--accent)}
+.sum-card.ok{border-left-color:var(--accent2)}.sum-card.warn{border-left-color:var(--warn)}.sum-card.danger{border-left-color:var(--danger)}
+.sum-card .lbl{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+.sum-card .val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace}
+.sum-card .sub{font-size:11px;color:var(--text3);margin-top:3px}
+.sum-card.ok .val{color:var(--accent2)}.sum-card.warn .val{color:var(--warn)}.sum-card.danger .val{color:var(--danger)}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
+.sec-title{font-size:15px;font-weight:600}
+.twrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--surface2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--bg)}
+tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
+.badge{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600}
+.badge-ok{background:var(--accent2-light);color:var(--accent2)}
+.badge-warn{background:var(--warn-light);color:var(--warn)}
+.badge-danger{background:var(--danger-light);color:var(--danger)}
+.qty-ctrl{display:flex;align-items:center;gap:4px}
+.qty-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);cursor:pointer;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.qty-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qty-disp{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;min-width:36px;text-align:center}
+.btn{padding:8px 16px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:13px;font-weight:500;font-family:'Sora',sans-serif;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#143d5a}
+.btn-green{background:var(--accent2);color:#fff}.btn-green:hover{background:#236040}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--surface2)}
+.btn-danger{background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be}.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}.btn-xs{padding:3px 8px;font-size:11px}
+.search{padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none;width:220px}
+.search:focus{border-color:var(--accent)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:1rem}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius);padding:1.75rem;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal h2{font-size:16px;font-weight:600;margin-bottom:1.25rem;color:var(--accent)}
+.mrow{margin-bottom:1rem}
+.mrow label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px}
+.mrow input,.mrow select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:var(--bg);outline:none}
+.mrow input:focus,.mrow select:focus{border-color:var(--accent)}
+.mactions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hist-item{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.hist-item:last-child{border-bottom:none}
+.hdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.hdot.in{background:var(--accent2)}.hdot.out{background:var(--danger)}.hdot.sale{background:var(--info)}.hdot.dev{background:var(--warn)}
+.hinfo{flex:1}.hprod{font-size:13px;font-weight:500}.hdesc{font-size:12px;color:var(--text3)}
+.hqty{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap}
+.hqty.in{color:var(--accent2)}.hqty.out{color:var(--danger)}.hqty.sale{color:var(--info)}
+.htime{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.toast{position:fixed;bottom:2rem;right:2rem;background:var(--accent);color:#fff;padding:12px 20px;border-radius:var(--radius);font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:999;transform:translateY(100px);opacity:0;transition:all .3s}
+.toast.show{transform:translateY(0);opacity:1}.toast.err{background:var(--danger)}
+.empty{text-align:center;padding:3rem 1rem;color:var(--text3)}
+.empty .ico{font-size:40px;margin-bottom:10px}
+.fin-bar{height:8px;border-radius:4px;background:var(--surface2);margin-top:6px;overflow:hidden}
+.fin-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s}
+.var-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.var-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
+.var-dot{width:20px;height:20px;border-radius:50%;border:2px solid rgba(0,0,0,.15);flex-shrink:0}
+.var-nome{flex:1;font-size:13px;font-weight:500}
+.var-qty{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;min-width:30px;text-align:center}
+.var-add-row{display:flex;gap:6px;align-items:center;margin-top:8px}
+.var-add-row input[type=color]{width:36px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;background:#fff;flex-shrink:0}
+.var-add-row input[type=text]{flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;color:var(--text);background:#fff;outline:none}
+.var-add-row input[type=text]:focus{border-color:var(--accent)}
+.var-add-row input[type=number]{width:70px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);background:#fff;outline:none}
+@media(max-width:768px){.main{padding:1rem}.sum-grid{grid-template-columns:repeat(2,1fr)}.sec-hd{flex-direction:column;align-items:flex-start}.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="hbrand">
+    <div style="width:36px;height:36px;background:rgba(255,255,255,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">📊</div>
+    <div><h1>Fin<span>Stack</span></h1><small>Gestão de Estoque & Financeiro</small></div>
+  </div>
+  <div class="hright">
+    <div class="hdate" id="hdate"></div>
+    <div class="sync-pill"><div class="sync-dot"></div><span id="sync-label">Carregando...</span></div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="tab active" onclick="showPage('estoque',this)">📦 Estoque</div>
+  <div class="tab" onclick="showPage('historico',this)">📋 Histórico</div>
+  <div class="tab" onclick="showPage('financeiro',this)">📊 Financeiro</div>
+  <div class="tab" onclick="showPage('telegram',this)">📱 Telegram</div>
+  <div class="tab" onclick="showPage('shopee',this)">🛍️ Importar Shopee</div>
+  <div class="tab" onclick="showPage('simulador',this)">🧮 Simulador</div>
+</nav>
+
+<div class="main">
+
+<!-- ═══ ESTOQUE ═══════════════════════════════════════════════════════════════ -->
+<div class="page active" id="page-estoque">
+  <div class="sum-grid" id="sum-grid"></div>
+  <div class="sec-hd">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="sec-title">Produtos em Estoque</span>
+      <button onclick="toggleNomesEstoque()" id="btn-toggle-estoque" title="Ocultar/mostrar nomes dos produtos" style="background:none;border:none;cursor:pointer;font-size:16px;opacity:.5;padding:0;line-height:1" tabindex="-1">👁</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input class="search" type="text" placeholder="🔍 Buscar produto..." id="search-inp" oninput="filterTable()">
+      <button class="btn btn-outline" onclick="openModal('ov-novo-produto')">➕ Produto</button>
+      <button class="btn btn-green" onclick="openEntrada()">📥 Entrada</button>
+      <button class="btn btn-primary" onclick="openModalVenda()">🛒 Venda</button>
+      <button class="btn" onclick="openDevolucao()" style="background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be">↩️ Devolução</button>
+    </div>
+  </div>
+  <div class="twrap" style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Produto</th><th>Código</th><th>Estoque</th><th>Custo Unit.</th><th>Preço Venda</th><th>Margem Shopee</th><th>Status</th><th style="min-width:120px">Ações</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ HISTÓRICO ═════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-historico">
+  <div class="sec-hd" style="flex-wrap:wrap;gap:10px">
+    <span class="sec-title">Histórico de Movimentações</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select id="hist-filtro" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+        <option value="todos">Todos os tipos</option>
+        <option value="entrada">📥 Adicionados</option>
+        <option value="venda">📤 Removidos / Vendas</option>
+        <option value="devolucao">↩️ Devoluções</option>
+        <option value="estorno">🔄 Estornos</option>
+        <option value="estornados">⚠️ Estornados</option>
+      </select>
+      <select id="hist-mes" onchange="renderHistorico()" style="padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);outline:none">
+        <option value="">Todos os meses</option>
+      </select>
+      <input type="date" id="hist-data-ini" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data inicial">
+      <input type="date" id="hist-data-fim" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data final">
+      <button class="btn btn-primary btn-sm" onclick="renderHistorico()">🔍 Buscar</button>
+      <button class="btn btn-outline btn-sm" onclick="limparFiltrosHist()">✕ Limpar</button>
+      <span id="hist-count" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+  </div>
+  <div class="twrap">
+    <div style="padding:1rem" id="hist-list"></div>
+  </div>
+</div>
+
+<!-- MODAL ESTORNO -->
+<div class="overlay" id="ov-estorno">
+  <div class="modal" style="width:420px">
+    <h2>🔄 Estornar Movimentação</h2>
+    <input type="hidden" id="est-hist-id">
+    <input type="hidden" id="est-produto-id">
+    <input type="hidden" id="est-tipo">
+    <div id="est-info" style="background:var(--surface2);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="mrow">
+      <label>Quantidade a estornar</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="qty-btn" onclick="ajustarEstorno(-1)" style="width:36px;height:36px;font-size:18px">−</button>
+        <input type="number" id="est-qtd" value="1" min="1" style="text-align:center;font-size:16px;font-weight:700">
+        <button class="qty-btn" onclick="ajustarEstorno(1)" style="width:36px;height:36px;font-size:18px">+</button>
+      </div>
+    </div>
+    <div id="est-preview" style="font-size:12px;color:var(--text2);margin-bottom:8px"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-estorno')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarEstorno()">🔄 Confirmar Estorno</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FINANCEIRO ════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-financeiro">
+  <!-- KPIs -->
+  <div class="sum-grid" id="fin-kpis"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+    <!-- Demonstrativo -->
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Demonstrativo do Mês</div>
+      <div style="padding:1rem" id="fin-demo"></div>
+    </div>
+    <!-- Produtos mais vendidos -->
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Vendas por Produto</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="date" id="vend-data-ini" onchange="renderFinanceiro()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data inicial">
+          <span style="font-size:11px;color:var(--text3)">até</span>
+          <input type="date" id="vend-data-fim" onchange="renderFinanceiro()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data final">
+          <button onclick="limparFiltroVendas()" title="Limpar datas" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;cursor:pointer;color:var(--text2)">✕</button>
+          <button onclick="gerarPDF()" style="padding:4px 10px;border:none;border-radius:var(--radius-sm);font-size:11px;font-weight:600;background:var(--accent);color:#fff;cursor:pointer;display:flex;align-items:center;gap:4px">📄 PDF</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th style="padding:8px 14px;font-size:11px;white-space:nowrap">
+              Produto / Cor
+              <button onclick="toggleNomesProdutos()" id="btn-toggle-nomes" title="Ocultar/mostrar nomes dos produtos" style="background:none;border:none;cursor:pointer;margin-left:6px;font-size:13px;vertical-align:middle;opacity:.6;padding:0;line-height:1" tabindex="-1">👁</button>
+            </th>
+            <th style="text-align:right">Qtd</th>
+            <th style="text-align:right">Receita</th>
+            <th style="text-align:right">Lucro Unit.</th>
+            <th style="text-align:right">Margem</th>
+          </tr></thead>
+          <tbody id="fin-produtos"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Despesas -->
+  <div class="twrap">
+    <div style="background:var(--danger-light);padding:13px 16px;border-bottom:1px solid #f0c4be;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--danger);text-transform:uppercase;letter-spacing:.6px">Controle de Despesas</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:1px">Gastos fixos e variáveis</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="desp-filtro" onchange="renderFinanceiro()" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none">
+          <option value="mes">Mês atual</option>
+          <option value="30">Últimos 30 dias</option>
+          <option value="todos">Tudo</option>
+        </select>
+        <select id="desp-mes-filtro" onchange="renderFinanceiro()" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none">
+          <option value="">Todos os meses</option>
+        </select>
+        <input type="date" id="desp-data-ini" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none" title="Data inicial">
+        <input type="date" id="desp-data-fim" style="padding:6px 10px;border:1px solid #f0c4be;border-radius:var(--radius-sm);font-size:12px;background:#fff;color:var(--text);outline:none" title="Data final">
+        <button class="btn btn-sm" onclick="renderFinanceiro()" style="background:var(--danger);color:#fff">🔍 Buscar</button>
+        <button class="btn btn-sm btn-outline" onclick="limparFiltrosDesp()" style="border-color:#f0c4be">✕ Limpar</button>
+        <button class="btn btn-sm" onclick="openModalDesp()" style="background:var(--danger);color:#fff">+ Nova Despesa</button>
+      </div>
+    </div>
+    <div style="padding:1rem">
+      <div id="desp-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem"></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:center">Ação</th></tr></thead>
+          <tbody id="desp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TELEGRAM ══════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-telegram">
+  <div style="max-width:700px;margin:0 auto">
+    <div style="background:var(--accent-light);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-bottom:1.5rem;box-shadow:var(--shadow)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div id="bot-status-dot" style="width:12px;height:12px;border-radius:50%;background:var(--border);flex-shrink:0;transition:background .3s"></div>
+        <div style="font-weight:600;font-size:14px;color:var(--accent)" id="bot-status-txt">Verificando bot...</div>
+      </div>
+      <div style="font-size:12px;color:var(--text2)">Bot: <strong>@estoquemsq_bot</strong> — Railway 24h</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Dados sincronizados com Supabase em tempo real.</div>
+    </div>
+    <div class="twrap">
+      <div style="background:var(--surface2);padding:12px 16px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">Comandos do Bot</div>
+      <div style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:10px" id="tg-cmds"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SHOPEE ════════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-shopee">
+  <div style="max-width:860px;margin:0 auto">
+
+    <!-- Upload area -->
+    <div id="shopee-upload-area" style="border:2px dashed var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;background:var(--surface);margin-bottom:1.5rem;cursor:pointer;transition:all .2s" 
+         onclick="document.getElementById('shopee-file-inp').click()"
+         ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+         ondragleave="this.style.borderColor='var(--border)'"
+         ondrop="handleShopeeDrop(event)">
+      <div style="font-size:40px;margin-bottom:12px">🛍️</div>
+      <div style="font-size:15px;font-weight:600;color:var(--accent);margin-bottom:6px">Importar Relatório da Shopee</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">Arraste o arquivo .xlsx aqui ou clique para selecionar</div>
+      <div style="font-size:11px;color:var(--text3);background:var(--surface2);border-radius:var(--radius-sm);padding:8px 14px;display:inline-block">
+        Shopee → Finanças → Minha Renda → Exportar
+      </div>
+      <input type="file" id="shopee-file-inp" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleShopeeFile(this)">
+    </div>
+
+    <!-- Preview / resultado -->
+    <div id="shopee-resultado" style="display:none">
+      <!-- Resumo financeiro -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span>Resumo do Período</span>
+          <span id="shopee-periodo" style="font-weight:400;color:var(--text3);text-transform:none;font-size:12px"></span>
+        </div>
+        <div id="shopee-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;padding:1rem"></div>
+      </div>
+
+      <!-- Tabela de pedidos -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span>Pedidos (<span id="shopee-total-pedidos">0</span>)</span>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="shopee-busca" placeholder="🔍 Buscar pedido..." oninput="filtrarTabelaShopee()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;outline:none;width:180px">
+            <button onclick="exportarShopeeCSV()" class="btn btn-outline btn-sm">⬇️ CSV</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>ID Pedido</th>
+              <th>Produto</th>
+              <th>Data</th>
+              <th style="text-align:right">Preço Bruto</th>
+              <th style="text-align:right">Comissão</th>
+              <th style="text-align:right">Taxa Serv.</th>
+              <th style="text-align:right">Outras Taxas</th>
+              <th style="text-align:right">Valor Liberado</th>
+            </tr></thead>
+            <tbody id="shopee-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Botão limpar -->
+      <div style="text-align:center">
+        <button onclick="limparShopee()" class="btn btn-outline">✕ Limpar e importar outro arquivo</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ SIMULADOR ════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-simulador">
+  <div style="max-width:900px;margin:0 auto">
+
+    <!-- Formulário -->
+    <div class="twrap" style="margin-bottom:1.5rem">
+      <div style="background:var(--surface2);padding:12px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>🧮 Simulador de Preço para Marketplaces</span>
+        <div id="ml-auth-area" style="display:flex;align-items:center;gap:8px">
+          <div id="ml-status-desconectado" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--text3);font-weight:400;text-transform:none">Conecte ao ML para taxas e frete em tempo real</span>
+            <button onclick="loginML()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius-sm);font-size:12px;font-weight:600;color:#b7791f;cursor:pointer;white-space:nowrap">
+              🛒 Conectar Mercado Livre
+            </button>
+          </div>
+          <div id="ml-status-conectado" style="display:none;align-items:center;gap:8px">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--accent2)"></div>
+            <span id="ml-user-nome" style="font-size:11px;color:var(--accent2);font-weight:600;text-transform:none"></span>
+            <button onclick="logoutML()" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;cursor:pointer;color:var(--text3)">Desconectar</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:1.25rem">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr auto;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Nome do Produto</label>
+            <input type="text" id="sim-nome" placeholder="Ex: Mosquiteiro Casal" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;outline:none">
+          </div>
+          <div style="grid-column:span 2">
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Anúncio ML</label>
+            <select id="sim-ml-anuncio" onchange="buscarFreteML()" style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg);outline:none;color:var(--text)">
+              <option value="">🔌 Conecte ao ML para ver seus anúncios</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo do Produto (R$)</label>
+            <input type="number" id="sim-custo" placeholder="0,00" step="0.01" min="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo Embalagem (R$)</label>
+            <input type="number" id="sim-embalagem" placeholder="0,00" step="0.01" min="0" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Outros Custos (R$)</label>
+            <input type="number" id="sim-outros" placeholder="0,00" step="0.01" min="0" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Imposto (%)</label>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="sim-imposto" placeholder="0" step="0.1" min="0" max="100" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+              <span style="font-size:13px;font-weight:600;color:var(--text2);white-space:nowrap">%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">ADS / Marketing (%)</label>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="sim-ads" placeholder="0" step="0.1" min="0" max="100" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+              <span style="font-size:13px;font-weight:600;color:var(--text2);white-space:nowrap">%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Frete ML</label>
+            <a href="https://www.mercadolivre.com.br/simulador-de-custos?" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius-sm);font-size:12px;font-weight:600;color:#b7791f;text-decoration:none;white-space:nowrap;transition:all .15s;height:40px" onmouseover="this.style.background='#fde58a'" onmouseout="this.style.background='#fff9e6'">
+              🛒 Simular no ML
+            </a>
+          </div>
+          <div>
+            <button onclick="limparSimulador()" class="btn btn-outline" style="white-space:nowrap">✕ Limpar</button>
+          </div>
+        </div>
+
+        <!-- Margem desejada -->
+        <div style="margin-top:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:500;color:var(--text2)">Margem líquida desejada:</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="setMargemAlvo(15)" class="btn-margem btn btn-outline btn-sm" data-m="15">15%</button>
+            <button onclick="setMargemAlvo(20)" class="btn-margem btn btn-outline btn-sm" data-m="20">20%</button>
+            <button onclick="setMargemAlvo(25)" class="btn-margem btn btn-outline btn-sm" data-m="25">25%</button>
+            <button onclick="setMargemAlvo(30)" class="btn-margem btn btn-outline btn-sm" data-m="30">30%</button>
+            <button onclick="setMargemAlvo(35)" class="btn-margem btn btn-outline btn-sm" data-m="35">35%</button>
+          </div>
+          <span id="sim-margem-alvo-label" style="font-size:12px;color:var(--text3)">Mostrando todas as faixas</span>
+        </div>
+
+        <!-- Painel Frete ML em tempo real -->
+        <div id="ml-frete-painel" style="display:none;margin-top:14px;padding:12px 16px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius)">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600;color:#b7791f">🛒 Custos Estimados — Mercado Livre</div>
+            <button onclick="buscarFreteML()" style="padding:4px 10px;background:#b7791f;color:#fff;border:none;border-radius:var(--radius-sm);font-size:11px;cursor:pointer">🔄 Atualizar</button>
+          </div>
+          <div id="ml-frete-resultado" style="font-size:12px;color:var(--text2)">Digite o CEP de destino acima para calcular o frete</div>
+        </div>
+
+        <!-- Preço Manual -->
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:500;color:var(--text2);white-space:nowrap">💰 Simular preço manual:</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;color:var(--text2)">R$</span>
+            <input type="number" id="sim-preco-manual" placeholder="Ex: 199,90" step="0.01" min="0" oninput="simularPrecoManual()" style="padding:7px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;width:130px;background:var(--accent-light)">
+          </div>
+          <button onclick="limparPrecoManual()" class="btn btn-outline btn-sm">✕</button>
+          <span style="font-size:11px;color:var(--text3)">Calcule o resultado exato para um preço específico</span>
+        </div>
+
+        <!-- Resultado preço manual -->
+        <div id="sim-manual-resultado" style="display:none;margin-top:12px;display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="sim-manual-cards"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Resultado -->
+    <div id="sim-resultado" style="display:none">
+
+      <!-- Shopee -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:#fff5f5;padding:12px 16px;border-bottom:1px solid #fde0d0;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🛍️</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#d4380d">Shopee</div>
+            <div style="font-size:11px;color:var(--text3)">Comissão 20% (14%+6% frete grátis) + tarifa fixa por item</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Faixa</th>
+              <th style="text-align:right">Preço Venda</th>
+              <th style="text-align:right">Comissão 20%</th>
+              <th style="text-align:right">Tarifa Fixa</th>
+              <th style="text-align:right" id="sh-col-imposto" style="display:none">Imposto</th>
+              <th style="text-align:right">ADS</th>
+              <th style="text-align:right">Frete</th>
+              <th style="text-align:right">Custo Total</th>
+              <th style="text-align:right">Lucro</th>
+              <th style="text-align:right">Margem</th>
+              <th style="text-align:center">Avaliação</th>
+            </tr></thead>
+            <tbody id="sim-shopee-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Mercado Livre -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:#fff9e6;padding:12px 16px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🛒</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#b7791f">Mercado Livre</div>
+            <div style="font-size:11px;color:var(--text3)">Clássico: 16% | Premium: 19% (frete grátis acima de R$79)</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Tipo / Faixa</th>
+              <th style="text-align:right">Preço Venda</th>
+              <th style="text-align:right">Comissão</th>
+              <th style="text-align:right" id="ml-col-imposto">Imposto</th>
+              <th style="text-align:right">ADS</th>
+              <th style="text-align:right">Frete</th>
+              <th style="text-align:right">Custo Total</th>
+              <th style="text-align:right">Lucro</th>
+              <th style="text-align:right">Margem</th>
+              <th style="text-align:center">Avaliação</th>
+            </tr></thead>
+            <tbody id="sim-ml-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Resumo comparativo -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:12px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">📊 Comparativo — Preço recomendado por plataforma</div>
+        <div id="sim-comparativo" style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem"></div>
+      </div>
+
+    </div>
+
+    <!-- Estado vazio -->
+    <div id="sim-vazio" style="text-align:center;padding:4rem 1rem;color:var(--text3)">
+      <div style="font-size:48px;margin-bottom:12px">🧮</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">Preencha o custo do produto</div>
+      <div style="font-size:13px">O simulador vai calcular os melhores preços para cada marketplace</div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- MODAL ENTRADA -->
+<div class="overlay" id="ov-entrada">
+  <div class="modal" style="width:420px">
+    <h2>📥 Registrar Entrada</h2>
+    <div class="mrow"><label>Produto</label><select id="ent-produto"></select></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="ent-qtd" placeholder="0" min="1"></div>
+    <div class="mrow"><label>Observação (opcional)</label><input type="text" id="ent-obs" placeholder="Ex: Compra fornecedor X"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-entrada')">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarEntrada()">Confirmar Entrada</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VENDA -->
+<div class="overlay" id="ov-venda">
+  <div class="modal" style="width:420px">
+    <h2>🛒 Registrar Venda</h2>
+    <div class="mrow"><label>Produto</label><select id="venda-produto"></select></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="venda-qtd" placeholder="1" min="1" value="1"></div>
+    <div class="mrow"><label>Forma de Pagamento</label>
+      <select id="venda-pgto">
+        <option>PIX</option><option>Dinheiro</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Boleto</option>
+      </select>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-venda')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarVenda()">Confirmar Venda</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR PRODUTO -->
+<div class="overlay" id="ov-edit">
+  <div class="modal" style="width:480px">
+    <h2>✏️ Editar Produto</h2>
+    <input type="hidden" id="edit-id">
+    <div class="mrow"><label>Nome</label><input type="text" id="edit-nome"></div>
+    <div class="two">
+      <div class="mrow"><label>Custo Produto (R$)</label><input type="number" id="edit-custo" step="0.01" oninput="calcEditMargem()"></div>
+      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="edit-preco" step="0.01" oninput="calcEditMargem()"></div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">💰 Custos Adicionais por Unidade</div>
+      <div class="two">
+        <div class="mrow">
+          <label>📦 Embalagem</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="edit-custo-embalagem" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <select id="tipo-embalagem" onchange="calcEditMargem()" style="width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg)">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+          </div>
+        </div>
+        <div class="mrow">
+          <label>📢 ADS / Marketing</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="edit-custo-ads" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <select id="tipo-ads" onchange="calcEditMargem()" style="width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg)">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="two">
+        <div class="mrow">
+          <label>🚚 Frete</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="edit-custo-frete" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <select id="tipo-frete" onchange="calcEditMargem()" style="width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg)">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+          </div>
+        </div>
+        <div class="mrow">
+          <label>➕ Outros</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="edit-custo-outros" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <select id="tipo-outros" onchange="calcEditMargem()" style="width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--bg)">
+              <option value="rs">R$</option>
+              <option value="pct">%</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
+    <!-- CALCULADORA SHOPEE -->
+    <div id="shopee-calc" style="background:#f8f2ff;border:1px solid #d4a8f0;border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;display:none">
+      <div style="font-size:11px;font-weight:700;color:#6b21a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🛍️ Simulação Shopee</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+        <div style="color:var(--text2)">Preço de venda:</div><div id="sh-preco" style="font-weight:600;font-family:'JetBrains Mono',monospace;text-align:right"></div>
+        <div style="color:var(--text2)">Comissão (20%):</div><div id="sh-comissao" style="color:var(--danger);font-family:'JetBrains Mono',monospace;text-align:right"></div>
+        <div style="color:var(--text2)">Tarifa fixa:</div><div id="sh-tarifa" style="color:var(--danger);font-family:'JetBrains Mono',monospace;text-align:right"></div>
+        <div style="color:var(--text2)">Custos totais:</div><div id="sh-custo" style="color:var(--danger);font-family:'JetBrains Mono',monospace;text-align:right"></div>
+        <div style="border-top:1px solid #d4a8f0;padding-top:6px;font-weight:600;color:#6b21a8">Lucro líquido:</div>
+        <div id="sh-lucro" style="border-top:1px solid #d4a8f0;padding-top:6px;font-weight:700;font-family:'JetBrains Mono',monospace;text-align:right"></div>
+        <div style="color:var(--text2)">Margem real:</div><div id="sh-margem" style="font-weight:600;font-family:'JetBrains Mono',monospace;text-align:right"></div>
+      </div>
+    </div>
+    <!-- VARIAÇÕES DE COR -->
+    <div class="mrow">
+      <label>Variações de Cor</label>
+      <div class="var-add-row">
+        <input type="color" id="nova-cor-hex" value="#4a90d9" title="Escolha a cor">
+        <input type="text" id="nova-cor-nome" placeholder="Nome da cor (ex: Azul, Rosa...)">
+        <input type="number" id="nova-cor-qty" placeholder="Qtd" min="0" value="0">
+        <button class="btn btn-green btn-sm" onclick="adicionarCor()">+ Add</button>
+      </div>
+      <div class="var-list" id="var-list"></div>
+    </div>
+
+    <div class="mactions" style="justify-content:space-between">
+      <button class="btn btn-danger btn-sm" onclick="deletarProduto()">🗑 Excluir Produto</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="closeModal('ov-edit')">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEVOLUÇÃO -->
+<div class="overlay" id="ov-devolucao">
+  <div class="modal" style="width:420px">
+    <h2>↩️ Registrar Devolução</h2>
+    <div class="mrow"><label>Produto</label><select id="dev-produto" onchange="atualizarPreviewDev()"></select></div>
+    <div id="dev-cores-section"></div>
+    <div class="mrow"><label>Quantidade</label><input type="number" id="dev-qtd" value="1" min="1" oninput="atualizarPreviewDev()"></div>
+    <div class="mrow"><label>Motivo</label>
+      <select id="dev-motivo">
+        <option>Cliente desistiu</option>
+        <option>Produto com defeito</option>
+        <option>Produto errado</option>
+        <option>Troca</option>
+        <option>Outros</option>
+      </select>
+    </div>
+    <div id="dev-preview" style="background:var(--danger-light);border:1px solid #f0c4be;border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:8px;display:none"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-devolucao')">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmarDevolucao()" style="background:var(--danger);color:#fff">↩️ Confirmar Devolução</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NOVO PRODUTO -->
+<div class="overlay" id="ov-novo-produto">
+  <div class="modal" style="width:420px">
+    <h2>➕ Novo Produto</h2>
+    <div class="mrow"><label>Nome do Produto</label><input type="text" id="np-nome" placeholder="Ex: Mosquiteiro Solteiro"></div>
+    <div class="mrow"><label>Código</label><input type="text" id="np-cod" placeholder="Ex: MSO-001"></div>
+    <div class="two">
+      <div class="mrow"><label>Custo Unit. (R$)</label><input type="number" id="np-custo" step="0.01" value="0"></div>
+      <div class="mrow"><label>Preço Venda (R$)</label><input type="number" id="np-preco" step="0.01" value="0"></div>
+    </div>
+    <div class="mrow"><label>Quantidade Inicial</label><input type="number" id="np-qty" value="0" min="0"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-novo-produto')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovoProduto()">Cadastrar Produto</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL COR RAPIDA -->
+<div class="overlay" id="ov-cor-rapida">
+  <div class="modal" style="width:340px">
+    <h2 id="cor-rapida-titulo">🎨 Ajustar Cor</h2>
+    <input type="hidden" id="cr-prod-id">
+    <input type="hidden" id="cr-cor-idx">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;background:var(--surface2);border-radius:var(--radius);padding:14px">
+      <div id="cr-cor-dot" style="width:32px;height:32px;border-radius:50%;border:2px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+      <div>
+        <div id="cr-cor-nome" style="font-weight:600;font-size:14px"></div>
+        <div id="cr-cor-qty-info" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+      </div>
+    </div>
+    <div class="mrow">
+      <label>Quantidade a adicionar ou remover</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="qty-btn" onclick="ajustarCorQtyModal(-1)" style="width:36px;height:36px;font-size:18px">−</button>
+        <input type="number" id="cr-quantidade" value="1" min="1" style="text-align:center;font-size:16px;font-weight:700">
+        <button class="qty-btn" onclick="ajustarCorQtyModal(1)" style="width:36px;height:36px;font-size:18px">+</button>
+      </div>
+    </div>
+    <div class="mactions" style="gap:8px">
+      <button class="btn btn-outline" onclick="closeModal('ov-cor-rapida')">Cancelar</button>
+      <button class="btn btn-danger btn-sm" onclick="confirmarCorRapida('remover')">− Remover</button>
+      <button class="btn btn-green" onclick="confirmarCorRapida('adicionar')">+ Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VENDA RAPIDA -->
+<div class="overlay" id="ov-venda-rapida">
+  <div class="modal" style="width:420px">
+    <h2>🛒 Venda Rápida</h2>
+    <input type="hidden" id="vr-produto-id">
+    <div id="vr-produto-nome" style="font-size:15px;font-weight:600;margin-bottom:16px;color:var(--accent)"></div>
+    <div id="vr-cores-section"></div>
+    <div class="mrow">
+      <label>Quantidade</label>
+      <input type="number" id="vr-qtd" value="1" min="1">
+    </div>
+    <div class="mrow">
+      <label>Forma de Pagamento</label>
+      <select id="vr-pgto">
+        <option>PIX</option><option>Dinheiro</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Boleto</option>
+      </select>
+    </div>
+    <div id="vr-preview" style="background:var(--accent-light);border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;margin-bottom:8px"></div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-venda-rapida')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarVendaRapida()">✅ Confirmar Venda</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMAGEM PRODUTO -->
+<div class="overlay" id="ov-imagem">
+  <div class="modal" style="width:420px">
+    <h2>📷 Foto do Produto</h2>
+    <input type="hidden" id="img-produto-id">
+    <div style="margin-bottom:16px;text-align:center">
+      <img id="img-preview" src="" style="max-width:100%;max-height:200px;border-radius:var(--radius);display:none;margin-bottom:12px">
+      <div id="img-placeholder" style="width:100%;height:160px;background:var(--surface2);border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px">
+        Nenhuma foto cadastrada
+      </div>
+    </div>
+    <div class="mrow">
+      <label>Selecionar Foto</label>
+      <input type="file" id="img-file" accept="image/*" onchange="previewImagem(this)" style="padding:8px;background:var(--bg)">
+    </div>
+    <div class="mrow">
+      <label>Ou cole uma URL de imagem</label>
+      <input type="text" id="img-url" placeholder="https://..." oninput="previewImagemUrl(this.value)">
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-imagem')">Cancelar</button>
+      <button class="btn btn-danger btn-sm" onclick="removerImagem()">🗑 Remover</button>
+      <button class="btn btn-primary" onclick="salvarImagem()">Salvar Foto</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DESPESA -->
+<div class="overlay" id="ov-desp">
+  <div class="modal" style="width:420px">
+    <h2>💸 Nova Despesa</h2>
+    <div class="mrow"><label>Valor (R$)</label><input type="number" id="desp-valor" step="0.01" placeholder="0,00"></div>
+    <div class="mrow"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
+    <div class="mrow"><label>Categoria</label>
+      <select id="desp-cat">
+        <option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option>
+        <option>Frete</option><option>Mão de obra</option><option>Outros</option>
+      </select>
+    </div>
+    <div class="mactions">
+      <button class="btn btn-outline" onclick="closeModal('ov-desp')">Cancelar</button>
+      <button class="btn btn-danger" onclick="salvarDesp()" style="background:var(--danger);color:#fff">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG (SUPABASE SDK) ─────────────────────────────────────────────────────
+const SUPABASE_URL = "https://wjgpgmpjfkotzkxmazgf.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqZ3BnbXBqZmtvdHpreG1hemdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTYzNjEsImV4cCI6MjA5NTM5MjM2MX0.aD7NVdnqUvhnKTOPz72R8zbVylAs7a15Z0Lq032YRsg";
+const _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const PRODUTOS_PADRAO = [
+  {id:"MGA-001", nome:"Mosquiteiro Gigante Aberto",  cod:"MGA-001", qty:0, custo:0, preco:0},
+  {id:"PES-001", nome:"Peseira",                      cod:"PES-001", qty:0, custo:0, preco:0},
+  {id:"CAL-001", nome:"Capa de Almofada",             cod:"CAL-001", qty:0, custo:0, preco:0},
+  {id:"MFI-001", nome:"Mosquiteiro Filo",             cod:"MFI-001", qty:0, custo:0, preco:0},
+  {id:"MCP-001", nome:"Mosquiteiro Casal Padrão",     cod:"MCP-001", qty:0, custo:0, preco:0},
+  {id:"MGF-001", nome:"Mosquiteiro Gigante Fechado",  cod:"MGF-001", qty:0, custo:0, preco:0},
+];
+
+let dados = {estoque:[], despesas:[], vendas:[], historico:[]};
+let saving = false;
+let lastSaveTime = 0;
+
+// ── VISIBILIDADE NOMES PRODUTOS (tabela financeiro) ───────────────────────────
+let nomesVisiveis = true;
+
+function toggleNomesProdutos() {
+  nomesVisiveis = !nomesVisiveis;
+  const btn = document.getElementById('btn-toggle-nomes');
+  if(btn) btn.textContent = nomesVisiveis ? '👁' : '🙈';
+  // Atualiza todas as células com classe cell-nome-produto
+  document.querySelectorAll('.cell-nome-produto').forEach(td => {
+    if(!nomesVisiveis) {
+      // Salva o texto real no data-nome antes de ocultar
+      if(!td.dataset.nome) td.dataset.nome = td.textContent.trim();
+      td.textContent = '••••••••••••';
+      td.style.color = 'var(--text3)';
+      td.style.letterSpacing = '2px';
+    } else {
+      if(td.dataset.nome) td.textContent = td.dataset.nome;
+      td.style.color = '';
+      td.style.letterSpacing = '';
+    }
+  });
+}
+
+// Aplica estado atual aos novos elementos renderizados
+function aplicarEstadoNomes() {
+  if(nomesVisiveis) return; // nada a fazer se visivel
+  const btn = document.getElementById('btn-toggle-nomes');
+  if(btn) btn.textContent = '🙈';
+  document.querySelectorAll('.cell-nome-produto').forEach(td => {
+    if(!td.dataset.nome) td.dataset.nome = td.textContent.trim();
+    td.textContent = '••••••••••••';
+    td.style.color = 'var(--text3)';
+    td.style.letterSpacing = '2px';
+  });
+}
+
+// ── SUPABASE HELPERS (SDK) ───────────────────────────────────────────────────
+async function sbGet(table, paramsStr="") {
+  let q = _sb.from(table).select("*");
+  if(paramsStr.includes("order=nome")) q = q.order("nome");
+  else if(paramsStr.includes("order=data.desc")) q = q.order("data", {ascending:false});
+  if(paramsStr.includes("limit=500")) q = q.limit(500);
+  const {data, error} = await q;
+  if(error) { console.error("sbGet error:", error); return []; }
+  return data || [];
+}
+async function sbPost(table, data) {
+  const {data:res, error} = await _sb.from(table).insert(data).select();
+  if(error) { console.error("sbPost error:", error); return null; }
+  return res;
+}
+async function sbPatch(table, id, data) {
+  const {error} = await _sb.from(table).update(data).eq("id", id);
+  if(error) { console.error("sbPatch error:", error); return false; }
+  return true;
+}
+async function sbDelete(table, id) {
+  const {error} = await _sb.from(table).delete().eq("id", id);
+  if(error) { console.error("sbDelete error:", error); return false; }
+  return true;
+}
+
+async function salvarProduto(p) {
+  const cores = Array.isArray(p.cores) ? p.cores : [];
+  return sbPatch("estoque", p.id, {
+    cod: p.cod || p.id,
+    nome: p.nome,
+    qty: p.qty || 0,
+    custo: p.custo || 0,
+    preco: p.preco || 0,
+    custo_embalagem: p.custo_embalagem || 0,
+    custo_ads: p.custo_ads || 0,
+    custo_frete: p.custo_frete || 0,
+    custo_outros: p.custo_outros || 0,
+    tipo_embalagem: p.tipo_embalagem || "rs",
+    tipo_ads: p.tipo_ads || "rs",
+    tipo_frete: p.tipo_frete || "rs",
+    tipo_outros: p.tipo_outros || "rs",
+    cores: cores,
+    foto: p.foto || "",
+    updated_at: new Date().toISOString()
+  });
+}
+
+async function lerDados() {
+  if(saving) return;
+  setSyncLabel("Sincronizando...");
+  try {
+    const [resE, resV, resD, resH] = await Promise.all([
+      _sb.from("estoque").select("*").order("nome"),
+      _sb.from("vendas").select("*").order("data", {ascending:false}).limit(1000),
+      _sb.from("despesas").select("*").order("data", {ascending:false}).limit(500),
+      _sb.from("historico").select("*").order("data", {ascending:false}).limit(500)
+    ]);
+    if(resE.error)  console.error("estoque:", resE.error);
+    if(resV.error)  console.error("vendas:", resV.error);
+    if(resD.error)  console.error("despesas:", resD.error);
+    if(resH.error)  console.error("historico:", resH.error);
+    dados.estoque   = resE.data || [];
+    dados.vendas    = resV.data || [];
+    dados.despesas  = resD.data || [];
+    dados.historico = resH.data || [];
+    dados.estoque.forEach(p => {
+      if(typeof p.cores === "string") { try { p.cores = JSON.parse(p.cores); } catch(e) { p.cores = []; } }
+      if(!Array.isArray(p.cores)) p.cores = [];
+      if(p.qty === undefined && p.estoque !== undefined) p.qty = Number(p.estoque);
+      if(p.cod === undefined) p.cod = p.id;
+    });
+    garantirProdutos();
+    setSyncLabel("Sincronizado ✓");
+  } catch(e) {
+    console.error("Erro ao carregar dados:", e);
+    setSyncLabel("Erro de sync ⚠️");
+    if(typeof toast === "function") toast("Erro de conexão com o banco.", true);
+  }
+}
+
+async function salvarDados() {
+  setSyncLabel("Salvando...");
+  saving = true;
+  try {
+    await Promise.all(dados.estoque.map(p => salvarProduto(p)));
+    setSyncLabel("Salvo ✓");
+  } catch(e) {
+    console.error("Erro ao salvar:", e);
+    setSyncLabel("⚠️ Erro ao salvar!");
+    toast("⚠️ Erro ao salvar! Tente novamente.", true);
+  } finally {
+    saving = false;
+    lastSaveTime = Date.now();
+  }
+}
+
+function garantirProdutos() {
+  dados.estoque.forEach(p => {
+    if(p.qty === undefined && p.estoque !== undefined) p.qty = Number(p.estoque);
+    if(p.estoque === undefined && p.qty !== undefined) p.estoque = p.qty;
+    if(p.cod === undefined) p.cod = p.id;
+    if(!Array.isArray(p.cores)) p.cores = [];
+  });
+  if(dados.estoque.length === 0) {
+    for(const p of PRODUTOS_PADRAO) dados.estoque.push({...p});
+  }
+}
+
+function setSyncLabel(t) { document.getElementById("sync-label").textContent = t; }
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+const R = v => "R$ " + Number(v||0).toFixed(2).replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,".");
+const mesAtual = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+const fmtData = iso => { const d=new Date(iso); return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); };
+
+function toast(msg, err=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.className = "toast show" + (err?" err":"");
+  setTimeout(()=>t.className="toast", 2800);
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function showPage(p, el) {
+  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+  document.getElementById("page-"+p).classList.add("active");
+  el.classList.add("active");
+  renderAll();
+}
+
+// ── MODAIS ────────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add("open"); }
+function closeModal(id) { document.getElementById(id).classList.remove("open"); }
+
+function openEntrada() {
+  const sel = document.getElementById("ent-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  document.getElementById("ent-qtd").value = "";
+  document.getElementById("ent-obs").value = "";
+  openModal("ov-entrada");
+}
+
+async function confirmarEntrada() {
+  const id  = document.getElementById("ent-produto").value;
+  const qtd = parseInt(document.getElementById("ent-qtd").value);
+  const obs = document.getElementById("ent-obs").value;
+  if(!qtd || qtd < 1) { toast("Informe a quantidade!", true); return; }
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p) return;
+  p.qty += qtd;
+  const _hEnt = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome, qtd, obs, data:new Date().toISOString(), mes:mesAtual()};
+  dados.historico.unshift(_hEnt);
+  await Promise.all([sbPost("historico", _hEnt), salvarProduto(p)]);
+  renderAll(); closeModal("ov-entrada");
+  toast(`✅ +${qtd} unidades de ${p.nome}`);
+}
+
+function openModalVenda() {
+  const sel = document.getElementById("venda-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome} (${p.qty} un)</option>`).join("");
+  document.getElementById("venda-qtd").value = 1;
+  openModal("ov-venda");
+}
+
+async function confirmarVenda() {
+  const id  = document.getElementById("venda-produto").value;
+  const qtd = parseInt(document.getElementById("venda-qtd").value);
+  const pgto = document.getElementById("venda-pgto").value;
+  if(!qtd || qtd < 1) { toast("Informe a quantidade!", true); return; }
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p) return;
+  if(p.qty < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
+  p.qty -= qtd;
+  const total = p.preco * qtd;
+  const _vV = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  const _hV = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(_vV); dados.historico.unshift(_hV);
+  await Promise.all([sbPost("vendas", _vV), sbPost("historico", _hV), salvarProduto(p)]);
+  renderAll(); closeModal("ov-venda");
+  toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
+}
+
+function openEdit(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("edit-id").value = id;
+  document.getElementById("edit-nome").value = p.nome;
+  document.getElementById("edit-custo").value = p.custo || 0;
+  document.getElementById("edit-preco").value = p.preco || 0;
+  document.getElementById("edit-custo-embalagem").value = p.custo_embalagem || 0;
+  document.getElementById("edit-custo-ads").value = p.custo_ads || 0;
+  document.getElementById("edit-custo-frete").value = p.custo_frete || 0;
+  document.getElementById("edit-custo-outros").value = p.custo_outros || 0;
+  document.getElementById("tipo-embalagem").value = p.tipo_embalagem || "rs";
+  document.getElementById("tipo-ads").value = p.tipo_ads || "rs";
+  document.getElementById("tipo-frete").value = p.tipo_frete || "rs";
+  document.getElementById("tipo-outros").value = p.tipo_outros || "rs";
+  calcEditMargem();
+  coresTemp = JSON.parse(JSON.stringify(p.cores || []));
+  renderVarList(coresTemp);
+  openModal("ov-edit");
+}
+
+let coresTemp = [];
+
+function renderVarList(cores) {
+  coresTemp = cores;
+  const el = document.getElementById("var-list");
+  if(!cores.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma variacao cadastrada</div>'; return; }
+  el.innerHTML = cores.map((c,i) => `
+    <div class="var-item">
+      <div class="var-dot" style="background:${c.hex}"></div>
+      <span class="var-nome">${c.nome}</span>
+      <button class="qty-btn" onclick="alterarCorQty(${i},-1)">−</button>
+      <span class="var-qty" id="cor-qty-${i}">${c.qty||0}</span>
+      <button class="qty-btn" onclick="alterarCorQty(${i},1)">+</button>
+      <button class="btn btn-danger btn-xs" onclick="removerCor(${i})">×</button>
+    </div>`).join("");
+}
+
+function adicionarCor() {
+  const hex  = document.getElementById("nova-cor-hex").value;
+  const nome = document.getElementById("nova-cor-nome").value.trim();
+  const qty  = parseInt(document.getElementById("nova-cor-qty").value)||0;
+  if(!nome) { toast("Informe o nome da cor!", true); return; }
+  coresTemp.push({hex, nome, qty});
+  renderVarList(coresTemp);
+  document.getElementById("nova-cor-nome").value = "";
+  document.getElementById("nova-cor-qty").value = "0";
+}
+
+function alterarCorQty(idx, delta) {
+  if(idx < 0 || idx >= coresTemp.length) return;
+  if((coresTemp[idx].qty||0)+delta < 0) return;
+  coresTemp[idx].qty = (coresTemp[idx].qty||0) + delta;
+  const el = document.getElementById("cor-qty-" + idx);
+  if(el) el.textContent = coresTemp[idx].qty;
+}
+
+function removerCor(idx) {
+  coresTemp.splice(idx, 1);
+  renderVarList(coresTemp);
+}
+
+function custoTotalProduto(p) {
+  if(!p) return 0;
+  const preco = p.preco || 0;
+  function val(v, tipo) {
+    return tipo === 'pct' ? (preco * (Number(v)||0) / 100) : (Number(v)||0);
+  }
+  return (Number(p.custo)||0) +
+    val(p.custo_embalagem, p.tipo_embalagem||'rs') +
+    val(p.custo_ads,       p.tipo_ads||'rs') +
+    val(p.custo_frete,     p.tipo_frete||'rs') +
+    val(p.custo_outros,    p.tipo_outros||'rs');
+}
+
+function custoEmReais(campo, preco) {
+  const val  = parseFloat(document.getElementById(`edit-custo-${campo}`)?.value)||0;
+  const tipo = document.getElementById(`tipo-${campo}`)?.value || 'rs';
+  return tipo === 'pct' ? (preco * val / 100) : val;
+}
+
+function tarifaFixaShopee(preco) {
+  if(preco <= 79.99) return 4;
+  if(preco <= 99.99) return 16;
+  if(preco <= 199.99) return 20;
+  if(preco <= 499.99) return 26;
+  return 26;
+}
+
+function calcEditMargem() {
+  const c        = parseFloat(document.getElementById("edit-custo").value)||0;
+  const v        = parseFloat(document.getElementById("edit-preco").value)||0;
+  const embal    = custoEmReais('embalagem', v);
+  const ads      = custoEmReais('ads', v);
+  const frete    = custoEmReais('frete', v);
+  const outros   = custoEmReais('outros', v);
+  const custoTotal = c + embal + ads + frete + outros;
+  const el = document.getElementById("edit-margem-prev");
+  if(v > 0) {
+    const m = ((v - custoTotal) / v * 100);
+    el.textContent = `Custo total: ${R(custoTotal)} | Margem bruta: ${m.toFixed(1)}% | Lucro: ${R(v - custoTotal)}`;
+    el.style.color = m > 30 ? "var(--accent2)" : m > 15 ? "var(--warn)" : "var(--danger)";
+  } else el.textContent = "";
+  const calc = document.getElementById("shopee-calc");
+  if(v > 0) {
+    calc.style.display = "block";
+    const comissao = v * 0.20;
+    const tarifa   = tarifaFixaShopee(v);
+    const lucro    = v - comissao - tarifa - custoTotal;
+    const margem   = (lucro / v * 100);
+    document.getElementById("sh-preco").textContent     = R(v);
+    document.getElementById("sh-comissao").textContent  = "− " + R(comissao);
+    document.getElementById("sh-tarifa").textContent    = "− " + R(tarifa);
+    document.getElementById("sh-custo").textContent     = "− " + R(custoTotal);
+    document.getElementById("sh-lucro").textContent     = R(lucro);
+    document.getElementById("sh-lucro").style.color     = lucro >= 0 ? "var(--accent2)" : "var(--danger)";
+    document.getElementById("sh-margem").textContent    = margem.toFixed(1) + "%";
+    document.getElementById("sh-margem").style.color    = margem >= 20 ? "var(--accent2)" : margem >= 10 ? "var(--warn)" : "var(--danger)";
+  } else {
+    calc.style.display = "none";
+  }
+}
+
+async function salvarEdicao() {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.nome            = document.getElementById("edit-nome").value;
+  p.custo           = parseFloat(document.getElementById("edit-custo").value)||0;
+  p.preco           = parseFloat(document.getElementById("edit-preco").value)||0;
+  p.custo_embalagem = parseFloat(document.getElementById("edit-custo-embalagem").value)||0;
+  p.custo_ads       = parseFloat(document.getElementById("edit-custo-ads").value)||0;
+  p.custo_frete     = parseFloat(document.getElementById("edit-custo-frete").value)||0;
+  p.custo_outros    = parseFloat(document.getElementById("edit-custo-outros").value)||0;
+  p.tipo_embalagem  = document.getElementById("tipo-embalagem")?.value || "rs";
+  p.tipo_ads        = document.getElementById("tipo-ads")?.value || "rs";
+  p.tipo_frete      = document.getElementById("tipo-frete")?.value || "rs";
+  p.tipo_outros     = document.getElementById("tipo-outros")?.value || "rs";
+  p.cores = coresTemp;
+  if(p.cores && p.cores.length > 0) {
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  }
+  await salvarProduto(p); renderAll(); closeModal("ov-edit");
+  toast("✅ Produto atualizado!");
+}
+
+function openModalDesp() { 
+  document.getElementById("desp-valor").value="";
+  document.getElementById("desp-desc").value="";
+  openModal("ov-desp"); 
+}
+async function salvarDesp() {
+  const valor = parseFloat(document.getElementById("desp-valor").value);
+  const desc  = document.getElementById("desp-desc").value.trim();
+  const cat   = document.getElementById("desp-cat").value;
+  if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
+  const _dNova = {valor, descricao:desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()};
+  const _dSalva = await sbPost("despesas", _dNova);
+  if(_dSalva) { const d = Array.isArray(_dSalva)?_dSalva[0]:_dSalva; dados.despesas.unshift(d); }
+  renderFinanceiro(); closeModal("ov-desp");
+  toast("✅ Despesa registrada!");
+}
+async function removerDesp(id) {
+  await sbDelete("despesas", id);
+  dados.despesas = dados.despesas.filter(d=>d.id!==id);
+  renderFinanceiro();
+  toast("🗑 Despesa removida");
+}
+
+// ── RENDER ESTOQUE ────────────────────────────────────────────────────────────
+function renderEstoque() {
+  const q   = (document.getElementById("search-inp").value||"").toLowerCase();
+  const prods = dados.estoque.filter(p=>!q||p.nome.toLowerCase().includes(q)||p.cod.toLowerCase().includes(q));
+  const total = dados.estoque.reduce((s,p)=>s+p.qty,0);
+  const zer   = dados.estoque.filter(p=>p.qty===0).length;
+  const bx    = dados.estoque.filter(p=>p.qty>0&&p.qty<5).length;
+  const valTotal = dados.estoque.reduce((s,p)=>s+(p.custo*p.qty),0);
+
+  document.getElementById("sum-grid").innerHTML = `
+    <div class="sum-card"><div class="lbl">Total Unidades</div><div class="val">${total}</div><div class="sub">${dados.estoque.length} produtos</div></div>
+    <div class="sum-card ${zer>0?'danger':'ok'}"><div class="lbl">Zerados</div><div class="val">${zer}</div><div class="sub">produtos sem estoque</div></div>
+    <div class="sum-card ${bx>0?'warn':'ok'}"><div class="lbl">Estoque Baixo</div><div class="val">${bx}</div><div class="sub">abaixo de 5 unidades</div></div>
+    <div class="sum-card"><div class="lbl">Valor em Estoque</div><div class="val" style="font-size:16px">${R(valTotal)}</div><div class="sub">ao custo</div></div>
+    <div class="sum-card danger"><div class="lbl">Devoluções</div><div class="val" style="font-size:20px">${dados.historico.filter(h=>h.tipo==="devolucao"&&h.mes===mesAtual()).length}</div><div class="sub">este mês</div></div>
+  `;
+
+  document.getElementById("tbody").innerHTML = prods.length ? prods.map(p=>{
+    function calcMargem(prod) {
+      if(!prod.preco||prod.preco<=0) return null;
+      const custoTotal = custoTotalProduto(prod);
+      const comissao = prod.preco * 0.20;
+      const tarifa = prod.preco<=79.99?4:prod.preco<=99.99?16:prod.preco<=199.99?20:26;
+      return (prod.preco - comissao - tarifa - custoTotal) / prod.preco * 100;
+    }
+    const mg = calcMargem(p);
+    const badge = p.qty===0?"badge-danger":p.qty<5?"badge-warn":"badge-ok";
+    const label = p.qty===0?"Zerado":p.qty<5?"Baixo":"OK";
+    return `<tr>
+      <td style="display:flex;align-items:center;gap:10px">
+        ${p.foto ? `<img src="${p.foto}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer" onclick="openImagem('${p.id}')">` : ''}
+        <div>
+          <strong class="cell-nome-estoque" data-nome="${p.nome}">${p.nome}</strong>
+          ${p.cores && p.cores.length ? '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">' + p.cores.map((c,i)=>`
+            <div style="display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:2px 8px 2px 4px;cursor:pointer" onclick="openCorRapida('${p.id}',${i})" title="Clique para ajustar estoque de ${c.nome}">
+              <span style="width:10px;height:10px;border-radius:50%;background:${c.hex};border:1px solid rgba(0,0,0,.15);display:inline-block;flex-shrink:0"></span>
+              <span style="font-size:11px;font-weight:500">${c.nome}</span>
+              <span style="font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:700;color:${c.qty===0?'var(--danger)':c.qty<3?'var(--warn)':'var(--accent2)'}">${c.qty}</span>
+              <button onclick="event.stopPropagation();vendaCorRapida('${p.id}',${i})" style="width:16px;height:16px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0" title="Vender 1 ${c.nome}">−</button>
+            </div>`).join('') + '</div>' : ''}
+        </div>
+      </td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text3)">${p.cod}</td>
+      <td>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="altQty('${p.id}',-1)">−</button>
+          <span class="qty-disp">${p.qty}</span>
+          <button class="qty-btn" onclick="altQty('${p.id}',1)">+</button>
+        </div>
+      </td>
+      <td style="font-family:'JetBrains Mono',monospace">${R(p.custo)}</td>
+      <td style="font-family:'JetBrains Mono',monospace">${R(p.preco)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;color:${mg===null?'var(--text3)':mg>=30?'var(--accent2)':mg>=15?'var(--warn)':'var(--danger)'}">${mg!==null?mg.toFixed(1)+"%":"—"}</td>
+      <td><span class="badge ${badge}">${label}</span></td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+        ${p.foto ? `<img src="${p.foto}" style="width:32px;height:32px;object-fit:cover;border-radius:6px;cursor:pointer" onclick="openImagem('${p.id}')" title="Ver/trocar foto">` : `<button class="btn btn-outline btn-xs" onclick="openImagem('${p.id}')" title="Adicionar foto">📷</button>`}
+        <button class="btn btn-outline btn-xs" onclick="openEdit('${p.id}')">✏️</button>
+        <button class="btn btn-xs" onclick="openVendaRapida('${p.id}')" style="background:var(--accent);color:#fff">🛒</button>
+        <button class="btn btn-xs" onclick="openDevolucaoProduto('${p.id}')" style="background:var(--danger-light);color:var(--danger);border:1px solid #f0c4be" title="Devolução">↩️</button>
+      </td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="8"><div class="empty"><div class="ico">🔍</div>Nenhum produto encontrado</div></td></tr>`;
+}
+
+async function altQty(id, delta) {
+  const p = dados.estoque.find(x=>x.id===id);
+  if(!p || p.qty+delta<0) return;
+  p.qty += delta;
+  const tipo = delta>0?"entrada":"venda";
+  const reg = {tipo, produto_id:p.id, produto_nome:p.nome, qtd:Math.abs(delta), data:new Date().toISOString(), mes:mesAtual()};
+  if(delta < 0) {
+    reg.preco_unitario = p.preco;
+    reg.total = p.preco * Math.abs(delta);
+    reg.pgto = "Não informado";
+    dados.vendas.push({
+      produto_id:p.id, produto_nome:p.nome,
+      qtd:Math.abs(delta), preco_unitario:p.preco,
+      total:p.preco*Math.abs(delta),
+      pgto:"Não informado",
+      data:new Date().toISOString(), mes:mesAtual()
+    });
+  }
+  dados.historico.unshift(reg);
+  await Promise.all([sbPost("historico", reg), salvarProduto(p)]);
+  renderEstoque();
+  if(delta < 0) toast(`🛒 Venda registrada: ${Math.abs(delta)}x ${p.nome}`);
+}
+function filterTable() { renderEstoque(); }
+
+// ── RENDER HISTÓRICO ──────────────────────────────────────────────────────────
+function popularMesesHist() {
+  const sel = document.getElementById("hist-mes");
+  if(!sel) return;
+  const meses = new Set();
+  dados.historico.forEach(h => { if(h.mes) meses.add(h.mes); else if(h.data) meses.add(h.data.substring(0,7)); });
+  const atual = sel.value;
+  const opts = ['<option value="">Todos os meses</option>'];
+  [...meses].sort().reverse().forEach(m => {
+    const [ano, mes] = m.split("-");
+    const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    const label = nomes[parseInt(mes)-1] + "/" + ano;
+    opts.push(`<option value="${m}" ${m===atual?"selected":""}>${label}</option>`);
+  });
+  sel.innerHTML = opts.join("");
+}
+
+function limparFiltrosDesp() {
+  document.getElementById("desp-filtro").value = "mes";
+  document.getElementById("desp-mes-filtro").value = "";
+  document.getElementById("desp-data-ini").value = "";
+  document.getElementById("desp-data-fim").value = "";
+  renderFinanceiro();
+}
+
+function limparFiltrosHist() {
+  document.getElementById("hist-filtro").value = "todos";
+  document.getElementById("hist-mes").value = "";
+  document.getElementById("hist-data-ini").value = "";
+  document.getElementById("hist-data-fim").value = "";
+  renderHistorico();
+}
+
+let estornoAtual = null;
+
+function renderHistorico() {
+  popularMesesHist();
+  const filtro  = document.getElementById("hist-filtro").value;
+  const mesFilt = document.getElementById("hist-mes").value;
+  const dataIni = document.getElementById("hist-data-ini").value;
+  const dataFim = document.getElementById("hist-data-fim").value;
+  let hist = [...dados.historico];
+  if(filtro === "estornados") {
+    hist = hist.filter(h => h.estornado === true);
+  } else if(filtro !== "todos") {
+    hist = hist.filter(h => h.tipo === filtro);
+  }
+  if(mesFilt) hist = hist.filter(h => {
+    const m = h.mes || (h.data ? h.data.substring(0,7) : "");
+    return m === mesFilt;
+  });
+  if(dataIni) {
+    const ini = new Date(dataIni + "T00:00:00");
+    hist = hist.filter(h => h.data && new Date(h.data) >= ini);
+  }
+  if(dataFim) {
+    const fim = new Date(dataFim + "T23:59:59");
+    hist = hist.filter(h => h.data && new Date(h.data) <= fim);
+  }
+  const el = document.getElementById("hist-list");
+  const count = document.getElementById("hist-count");
+  if(count) count.textContent = hist.length + " registros";
+  if(!hist.length) { el.innerHTML='<div class="empty"><div class="ico">📋</div>Nenhuma movimentação encontrada</div>'; return; }
+  el.innerHTML = hist.slice(0,200).map(h=>{
+    const isEntrada = h.tipo==="entrada";
+    const isVenda   = h.tipo==="venda";
+    const isDev     = h.tipo==="devolucao";
+    const isEstorno = h.tipo==="estorno";
+    const cls  = isEntrada?"in":isVenda?"sale":isDev?"dev":isEstorno?"in":"out";
+    const icon = isEntrada?"📥":isVenda?"📤":isDev?"↩️":isEstorno?"🔄":"📤";
+    const sinal = (isEntrada||isDev||isEstorno) ? "+" : "−";
+    const label = `${sinal}${h.qtd} un${isVenda&&h.total?` (${R(h.total||0)})`:""}`;
+    const dataObj = new Date(h.data);
+    const dataFmt = dataObj.toLocaleDateString("pt-BR");
+    const horaFmt = dataObj.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    const jaEstornado = h.estornado === true;
+    const btnEstorno = (isEntrada||isVenda) && h.id && !jaEstornado ?
+      `<button class="btn btn-outline btn-xs" onclick="openEstornoById(${h.id})" style="white-space:nowrap;margin-top:4px">🔄 Estornar</button>` :
+      jaEstornado ? `<span style="font-size:10px;background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:4px;padding:2px 7px;margin-top:4px;display:inline-block">⚠️ Estornado${h.qtd_estornada&&h.qtd_estornada<h.qtd?' (parcial)':''}</span>` : "";
+    return `<div class="hist-item" style="align-items:flex-start;gap:10px">
+      <div class="hdot ${cls}" style="margin-top:5px;flex-shrink:0"></div>
+      <div class="hinfo" style="flex:1">
+        <div class="hprod">${icon} <strong>${h.produto_nome}</strong></div>
+        <div class="hdesc" style="margin-top:2px">
+          ${isEntrada?"📥 Adicionado":isVenda?"📤 Removido/Vendido":isDev?"↩️ Devolução":isEstorno?"🔄 Estorno":"—"}
+          ${h.obs?" — "+h.obs:""}${h.pgto&&h.pgto!=="Não informado"?" — "+h.pgto:""}${h.motivo?" — "+h.motivo:""}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">📅 ${dataFmt} &nbsp;⏰ ${horaFmt}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0">
+        <div class="hqty ${cls}">${label}</div>
+        ${btnEstorno}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function openEstornoById(id) {
+  const h = dados.historico.find(x => x.id == id);
+  if(!h) { toast("Movimentação não encontrada!", true); return; }
+  openEstorno(h);
+}
+
+function openEstorno(h) {
+  estornoAtual = h;
+  const isVenda = h.tipo === "venda";
+  document.getElementById("est-hist-id").value    = h.id || "";
+  document.getElementById("est-produto-id").value = h.produto_id || "";
+  document.getElementById("est-tipo").value        = h.tipo;
+  document.getElementById("est-qtd").value         = h.qtd || 1;
+  document.getElementById("est-qtd").max           = h.qtd || 999;
+  const acao = isVenda ? "devolver ao estoque" : "remover do estoque";
+  document.getElementById("est-info").innerHTML = `
+    <strong>${isVenda?"📤 Venda/Remoção":"📥 Entrada"}</strong><br>
+    Produto: <strong>${h.produto_nome}</strong><br>
+    Quantidade original: <strong>${h.qtd} un</strong><br>
+    Data: ${new Date(h.data).toLocaleString("pt-BR")}<br>
+    <span style="color:var(--accent);margin-top:4px;display:block">Estorno irá <strong>${acao}</strong></span>`;
+  atualizarPreviewEstorno();
+  openModal("ov-estorno");
+}
+
+function ajustarEstorno(delta) {
+  const inp = document.getElementById("est-qtd");
+  const val = parseInt(inp.value)||1;
+  const max = parseInt(inp.max)||999;
+  if(val+delta >= 1 && val+delta <= max) inp.value = val+delta;
+  atualizarPreviewEstorno();
+}
+
+function atualizarPreviewEstorno() {
+  if(!estornoAtual) return;
+  const qtd = parseInt(document.getElementById("est-qtd").value)||1;
+  const isVenda = estornoAtual.tipo === "venda";
+  const acao = isVenda ? `+${qtd} unidades voltam ao estoque` : `−${qtd} unidades removidas do estoque`;
+  document.getElementById("est-preview").textContent = "→ " + acao;
+}
+
+async function confirmarEstorno() {
+  if(!estornoAtual) return;
+  const qtd = parseInt(document.getElementById("est-qtd").value)||1;
+  const p   = dados.estoque.find(x=>x.id===estornoAtual.produto_id);
+  const isVenda = estornoAtual.tipo === "venda";
+  if(p) {
+    if(isVenda) {
+      p.qty += qtd;
+    } else {
+      if(p.qty < qtd) { toast("Estoque insuficiente para estorno!", true); return; }
+      p.qty -= qtd;
+    }
+    p.estoque = p.qty;
+    const corMatch = estornoAtual.produto_nome?.match(/\(([^)]+)\)/);
+    if(corMatch && p.cores) {
+      const corNome = corMatch[1];
+      const cor = p.cores.find(c=>c.nome===corNome);
+      if(cor) { isVenda ? cor.qty += qtd : cor.qty -= qtd; }
+      p.qty = p.cores.reduce((s,c)=>s+(c.qty||0),0);
+    }
+    await salvarProduto(p);
+  }
+  if(estornoAtual.id) {
+    await _sb.from("historico").update({estornado: true, qtd_estornada: qtd}).eq("id", estornoAtual.id);
+    const hLocal = dados.historico.find(x=>x.id==estornoAtual.id);
+    if(hLocal) { hLocal.estornado = true; hLocal.qtd_estornada = qtd; }
+  }
+  const histEstorno = {
+    tipo:"estorno", produto_id:estornoAtual.produto_id,
+    produto_nome:estornoAtual.produto_nome, qtd,
+    obs:`Estorno de ${estornoAtual.tipo} (${qtd}un)`,
+    ref_id: estornoAtual.id,
+    data:new Date().toISOString(), mes:mesAtual()
+  };
+  dados.historico.unshift(histEstorno);
+  await sbPost("historico", histEstorno);
+  estornoAtual = null;
+  renderAll(); closeModal("ov-estorno");
+  toast(`🔄 Estorno realizado: ${qtd}x ${histEstorno.produto_nome}`);
+}
+
+// ── RENDER FINANCEIRO ─────────────────────────────────────────────────────────
+function limparFiltroVendas() {
+  document.getElementById("vend-data-ini").value = "";
+  document.getElementById("vend-data-fim").value = "";
+  renderFinanceiro();
+}
+
+function renderFinanceiro() {
+  const mes = mesAtual();
+  // Filtro de datas do card de vendas
+  const vendDataIni = document.getElementById("vend-data-ini")?.value || "";
+  const vendDataFim = document.getElementById("vend-data-fim")?.value || "";
+  let vendas;
+  if(vendDataIni || vendDataFim) {
+    vendas = dados.vendas.filter(v => {
+      if(!v.data) return false;
+      const d = new Date(v.data);
+      if(vendDataIni && d < new Date(vendDataIni + "T00:00:00")) return false;
+      if(vendDataFim && d > new Date(vendDataFim + "T23:59:59")) return false;
+      return true;
+    });
+  } else {
+    vendas = dados.vendas.filter(v=>v.mes===mes);
+  }
+  const filtro   = document.getElementById("desp-filtro")?.value || "mes";
+  let despesas;
+  const deспMesSel = document.getElementById("desp-mes-filtro");
+  if(deспMesSel) {
+    const mesesDesp = new Set();
+    dados.despesas.forEach(d => { const m = d.mes||(d.data?d.data.substring(0,7):""); if(m) mesesDesp.add(m); });
+    const atualMes = deспMesSel.value;
+    const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    deспMesSel.innerHTML = '<option value="">Todos os meses</option>' +
+      [...mesesDesp].sort().reverse().map(m => {
+        const [a,mm] = m.split("-");
+        return `<option value="${m}" ${m===atualMes?"selected":""}>${nomes[parseInt(mm)-1]}/${a}</option>`;
+      }).join("");
+  }
+
+  const mesFiltDesp = document.getElementById("desp-mes-filtro")?.value || "";
+  const dataIniDesp = document.getElementById("desp-data-ini")?.value || "";
+  const dataFimDesp = document.getElementById("desp-data-fim")?.value || "";
+
+  if(mesFiltDesp) {
+    despesas = dados.despesas.filter(d => (d.mes||(d.data?d.data.substring(0,7):"")) === mesFiltDesp);
+  } else if(filtro==="mes") {
+    despesas = dados.despesas.filter(d=>{
+      const dm = d.mes || (d.data ? d.data.substring(0,7) : '');
+      return dm === mes;
+    });
+  } else if(filtro==="30") {
+    const d30=new Date(); d30.setDate(d30.getDate()-30);
+    despesas=dados.despesas.filter(d=>new Date(d.data)>=d30);
+  } else {
+    despesas = dados.despesas;
+  }
+
+  if(dataIniDesp) {
+    const ini = new Date(dataIniDesp + "T00:00:00");
+    despesas = despesas.filter(d => d.data && new Date(d.data) >= ini);
+  }
+  if(dataFimDesp) {
+    const fim = new Date(dataFimDesp + "T23:59:59");
+    despesas = despesas.filter(d => d.data && new Date(d.data) <= fim);
+  }
+
+  const vendasFinanc = vendas.filter(v => {
+    const hCorr = dados.historico.find(h =>
+      h.tipo === "venda" &&
+      h.produto_nome === v.produto_nome &&
+      Math.abs(new Date(h.data) - new Date(v.data)) < 10000
+    );
+    return !hCorr || !hCorr.estornado;
+  });
+  const receita    = vendasFinanc.reduce((s,v)=>s+(v.total||0),0);
+  const despTot    = despesas.reduce((s,d)=>s+(d.valor||0),0);
+  let custoProd    = 0;
+  for(const v of vendasFinanc) { 
+    const p=dados.estoque.find(x=>x.id===v.produto_id); 
+    const custo = p ? (p.custo||0) : (v.custo_unitario||0);
+    custoProd += custo * (v.qtd||1); 
+  }
+  const lucro      = receita - despTot - custoProd;
+  const margem     = receita>0?(lucro/receita*100):0;
+  let lucroShopeeTotal = 0;
+  let taxasShopeeTotal = 0;
+  for(const v of vendasFinanc) {
+    const p = dados.estoque.find(x=>x.id===v.produto_id);
+    const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
+    const custoUnit = custoTotalProduto(p);
+    const comissao = preco * 0.20;
+    const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
+    taxasShopeeTotal += (comissao + tarifa) * (v.qtd||1);
+    lucroShopeeTotal += (preco - comissao - tarifa - custoUnit) * (v.qtd||1);
+  }
+  lucroShopeeTotal -= despTot;
+  const margemShopee = receita>0?(lucroShopeeTotal/receita*100):0;
+
+  document.getElementById("fin-kpis").innerHTML = `
+    <div class="sum-card ok"><div class="lbl">Receita</div><div class="val" style="font-size:16px">${R(receita)}</div><div class="sub">mês atual</div></div>
+    <div class="sum-card danger"><div class="lbl">Despesas</div><div class="val" style="font-size:16px">${R(despTot)}</div><div class="sub">operacionais</div></div>
+    <div class="sum-card"><div class="lbl">Custo Produtos</div><div class="val" style="font-size:16px">${R(custoProd)}</div><div class="sub">CMV</div></div>
+    <div class="sum-card ${lucro>=0?'ok':'danger'}"><div class="lbl">Lucro Líquido</div><div class="val" style="font-size:16px">${R(lucro)}</div><div class="sub">Margem: ${margem.toFixed(1)}%</div></div>
+  `;
+
+  document.getElementById("fin-demo").innerHTML = `
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💰 Receita bruta</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(receita)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷 Custo dos produtos</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(custoProd)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💸 Despesas operacionais</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(despTot)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🛍️ Taxas Shopee (20%+tarifa)</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(taxasShopeeTotal)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido (Shopee)</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucroShopeeTotal>=0?'var(--accent2)':'var(--danger)'}">${R(lucroShopeeTotal)} <span style="font-size:12px;opacity:.7">(${margemShopee.toFixed(1)}%)</span></strong></div>
+  `;
+
+  // Por cor separada
+  const porCor = {};
+  for(const v of vendasFinanc) {
+    const key = v.produto_nome;
+    const p = dados.estoque.find(x=>x.id===v.produto_id);
+    if(!porCor[key]) {
+      porCor[key] = {nome: v.produto_nome, qtd:0, receita:0, custo: p ? p.custo : 0, lucroShopee:0};
+    }
+    porCor[key].qtd      += v.qtd;
+    porCor[key].receita  += v.total;
+    const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
+    const custoUnit = custoTotalProduto(p);
+    const comissao = preco * 0.20;
+    const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
+    const lucroUnit = preco - comissao - tarifa - custoUnit;
+    porCor[key].lucroShopee += lucroUnit * v.qtd;
+    porCor[key].margem = preco > 0 ? (lucroUnit / preco * 100) : 0;
+  }
+  const itens = Object.values(porCor).sort((a,b)=>b.receita-a.receita);
+
+  // Gera o HTML da tabela e depois aplica o estado de visibilidade
+  document.getElementById("fin-produtos").innerHTML = itens.length
+    ? itens.map(x=>`<tr>
+        <td class="cell-nome-produto" data-nome="${x.nome.replace(/"/g,'&quot;')}" style="padding:8px 14px;font-size:13px">${x.nome}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;padding:8px 14px">${x.qtd}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--accent2);padding:8px 14px">${R(x.receita)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${x.lucroShopee>=0?'var(--accent2)':'var(--danger)'};padding:8px 14px">${R(x.lucroShopee)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${(x.margem||0)>=20?'var(--accent2)':(x.margem||0)>=10?'var(--warn)':'var(--danger)'};padding:8px 14px">${(x.margem||0).toFixed(1)}%</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">Nenhuma venda este mês</td></tr>`;
+
+  // Reaplica estado de ocultamento se estiver ativo
+  aplicarEstadoNomes();
+
+  // Categorias despesas
+  const cats = {};
+  despesas.forEach(d=>{ if(!cats[d.categoria]) cats[d.categoria]=0; cats[d.categoria]+=d.valor; });
+  document.getElementById("desp-cats").innerHTML = Object.entries(cats).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+    <div style="background:var(--danger-light);border:1px solid #f0c4be;border-radius:var(--radius-sm);padding:10px 12px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:3px">${k}</div>
+      <div style="font-size:14px;font-weight:700;color:var(--danger);font-family:'JetBrains Mono',monospace">${R(v)}</div>
+    </div>`).join("");
+
+  document.getElementById("desp-tbody").innerHTML = despesas.length
+    ? despesas.map(d=>`<tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
+        <td>${d.desc||d.descricao||'-'}</td>
+        <td><span class="badge badge-warn">${d.categoria||'Outros'}</span></td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(d.valor)}</td>
+        <td style="text-align:center"><button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button></td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="empty">Nenhuma despesa</td></tr>`;
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function openVendaRapida(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("vr-produto-id").value = id;
+  document.getElementById("vr-produto-nome").textContent = p.nome;
+  document.getElementById("vr-qtd").value = 1;
+  const coresSection = document.getElementById("vr-cores-section");
+  if(p.cores && p.cores.length > 0) {
+    coresSection.innerHTML = `<div class="mrow"><label>Variação de Cor</label><select id="vr-cor">
+      <option value="">Sem variação específica</option>
+      ${p.cores.map((c,i)=>`<option value="${i}">${c.nome} (${c.qty} un)</option>`).join('')}
+    </select></div>`;
+  } else {
+    coresSection.innerHTML = '';
+  }
+  atualizarPreviewVenda();
+  openModal("ov-venda-rapida");
+}
+
+function openDevolucao() {
+  const sel = document.getElementById("dev-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  atualizarCoresDev();
+  atualizarPreviewDev();
+  openModal("ov-devolucao");
+}
+
+function openDevolucaoProduto(id) {
+  const sel = document.getElementById("dev-produto");
+  sel.innerHTML = dados.estoque.map(p=>`<option value="${p.id}">${p.nome}</option>`).join("");
+  sel.value = id;
+  atualizarCoresDev();
+  atualizarPreviewDev();
+  openModal("ov-devolucao");
+}
+
+function atualizarCoresDev() {
+  const id = document.getElementById("dev-produto").value;
+  const p  = dados.estoque.find(x=>x.id===id);
+  const sec = document.getElementById("dev-cores-section");
+  if(p && p.cores && p.cores.length > 0) {
+    sec.innerHTML = `<div class="mrow"><label>Variação de Cor</label><select id="dev-cor">
+      <option value="">Sem variação específica</option>
+      ${p.cores.map((c,i)=>`<option value="${i}">${c.nome} (${c.qty} un)</option>`).join('')}
+    </select></div>`;
+  } else {
+    sec.innerHTML = '';
+  }
+}
+
+function atualizarPreviewDev() {
+  const id  = document.getElementById("dev-produto").value;
+  const qtd = parseInt(document.getElementById("dev-qtd").value)||1;
+  const p   = dados.estoque.find(x=>x.id===id);
+  const prev = document.getElementById("dev-preview");
+  if(p && prev) {
+    prev.style.display = "block";
+    const reembolso = p.preco * qtd;
+    prev.innerHTML = `<strong>↩️ Devolução:</strong> ${qtd}x ${p.nome}<br><span style="color:var(--danger)">Reembolso: ${R(reembolso)}</span>`;
+  }
+}
+
+async function confirmarDevolucao() {
+  const id    = document.getElementById("dev-produto").value;
+  const qtd   = parseInt(document.getElementById("dev-qtd").value)||1;
+  const motivo = document.getElementById("dev-motivo").value;
+  const p     = dados.estoque.find(x=>x.id===id); if(!p) return;
+
+  const corSel = document.getElementById("dev-cor");
+  const corIdx = corSel ? parseInt(corSel.value) : NaN;
+
+  if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
+    p.cores[corIdx].qty += qtd;
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  } else {
+    p.qty += qtd;
+  }
+  p.estoque = p.qty;
+
+  const reembolso = p.preco * qtd;
+
+  dados.historico.unshift({
+    tipo: "devolucao",
+    produto_id: p.id,
+    produto_nome: p.nome,
+    qtd, total: reembolso,
+    motivo,
+    data: new Date().toISOString(),
+    mes: mesAtual()
+  });
+
+  dados.despesas.unshift({
+    id: Date.now(),
+    valor: reembolso,
+    desc: "Devolucao: " + p.nome + " x" + qtd + " (" + motivo + ")",
+    descricao: "Devolucao: " + p.nome,
+    categoria: "Devolucao",
+    data: new Date().toISOString(),
+    mes: mesAtual()
+  });
+
+  await salvarProduto(p); renderAll(); closeModal("ov-devolucao");
+  toast("↩️ Devolução registrada: " + qtd + "x " + p.nome);
+}
+
+async function deletarProduto() {
+  const id = document.getElementById("edit-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  if(!confirm("Excluir o produto '" + p.nome + "'? Esta ação não pode ser desfeita.")) return;
+  dados.estoque = dados.estoque.filter(x=>x.id!==id);
+  const {error} = await _sb.from("estoque").delete().eq("id", id);
+  if(error) { console.error("Erro ao deletar produto:", error); toast("⚠️ Erro ao excluir!", true); return; }
+  renderAll(); closeModal("ov-edit");
+  toast("🗑 Produto excluído: " + p.nome);
+}
+
+async function salvarNovoProduto() {
+  const nome  = document.getElementById("np-nome").value.trim();
+  const cod   = document.getElementById("np-cod").value.trim();
+  const custo = parseFloat(document.getElementById("np-custo").value)||0;
+  const preco = parseFloat(document.getElementById("np-preco").value)||0;
+  const qty   = parseInt(document.getElementById("np-qty").value)||0;
+  if(!nome) { toast("Informe o nome do produto!", true); return; }
+  if(!cod)  { toast("Informe o código do produto!", true); return; }
+  if(dados.estoque.find(p=>p.id===cod||p.cod===cod)) { toast("Código já existe!", true); return; }
+  dados.estoque.push({id:cod, cod:cod, nome, custo, preco, qty, estoque:qty, cores:[]});
+  await sbPost("estoque", {id:cod, cod:cod, nome, custo, preco, qty, cores:[], foto:""});
+  if(qty > 0) {
+    const _hNovo = {tipo:"entrada", produto_id:cod, produto_nome:nome, qtd:qty, obs:"Cadastro inicial", data:new Date().toISOString(), mes:mesAtual()};
+    dados.historico.unshift(_hNovo);
+    await sbPost("historico", _hNovo);
+  }
+  renderAll(); closeModal("ov-novo-produto");
+  ["np-nome","np-cod","np-custo","np-preco","np-qty"].forEach(id=>{
+    document.getElementById(id).value = id.includes("custo")||id.includes("preco")?"0":id.includes("qty")?"0":"";
+  });
+  toast("✅ Produto cadastrado: " + nome);
+}
+
+function openCorRapida(prodId, corIdx) {
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+  document.getElementById("cr-prod-id").value = prodId;
+  document.getElementById("cr-cor-idx").value = corIdx;
+  document.getElementById("cr-cor-dot").style.background = cor.hex;
+  document.getElementById("cr-cor-nome").textContent = cor.nome;
+  document.getElementById("cr-cor-qty-info").textContent = "Estoque atual: " + cor.qty + " unidades";
+  document.getElementById("cor-rapida-titulo").textContent = "🎨 " + cor.nome;
+  document.getElementById("cr-quantidade").value = 1;
+  openModal("ov-cor-rapida");
+}
+
+function ajustarCorQtyModal(delta) {
+  const inp = document.getElementById("cr-quantidade");
+  const val = parseInt(inp.value)||1;
+  if(val + delta >= 1) inp.value = val + delta;
+}
+
+async function confirmarCorRapida(tipo) {
+  const prodId = document.getElementById("cr-prod-id").value;
+  const corIdx = parseInt(document.getElementById("cr-cor-idx").value);
+  const qtd    = parseInt(document.getElementById("cr-quantidade").value)||1;
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+
+  if(tipo === "remover") {
+    if(cor.qty < qtd) { toast("Estoque insuficiente! Disponivel: " + cor.qty, true); return; }
+    cor.qty -= qtd;
+    const venda = {produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, preco_unitario:p.preco, total:p.preco*qtd, pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
+    const hist  = {tipo:"venda", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, total:p.preco*qtd, data:new Date().toISOString(), mes:mesAtual()};
+    dados.vendas.push(venda);
+    dados.historico.unshift(hist);
+    await Promise.all([sbPost("vendas", venda), sbPost("historico", hist)]);
+    toast("🛒 -" + qtd + " " + cor.nome);
+  } else {
+    cor.qty += qtd;
+    const hist = {tipo:"entrada", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd, data:new Date().toISOString(), mes:mesAtual()};
+    dados.historico.unshift(hist);
+    await sbPost("historico", hist);
+    toast("📥 +" + qtd + " " + cor.nome);
+  }
+
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  p.estoque = p.qty;
+  await salvarProduto(p); renderAll(); closeModal("ov-cor-rapida");
+}
+
+async function vendaCorRapida(prodId, corIdx) {
+  const p = dados.estoque.find(x=>x.id===prodId); if(!p||!p.cores) return;
+  const cor = p.cores[corIdx];
+  if(!cor || cor.qty <= 0) { toast("Estoque zerado para " + cor.nome + "!", true); return; }
+  cor.qty -= 1;
+  p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  p.estoque = p.qty;
+  const venda = {produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd:1, preco_unitario:p.preco, total:p.preco, pgto:"Não informado", data:new Date().toISOString(), mes:mesAtual()};
+  const hist  = {tipo:"venda", produto_id:p.id, produto_nome:p.nome+" ("+cor.nome+")", qtd:1, total:p.preco, data:new Date().toISOString(), mes:mesAtual()};
+  dados.vendas.push(venda);
+  dados.historico.unshift(hist);
+  await Promise.all([sbPost("vendas", venda), sbPost("historico", hist), salvarProduto(p)]);
+  renderEstoque();
+  toast("−1 " + cor.nome + " · Estoque: " + cor.qty);
+}
+
+function atualizarPreviewVenda() {
+  const id = document.getElementById("vr-produto-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  const qtd = parseInt(document.getElementById("vr-qtd").value)||1;
+  const total = p.preco * qtd;
+  const prev = document.getElementById("vr-preview");
+  if(prev) prev.innerHTML = `<strong>Total: ${R(total)}</strong> (${qtd}x ${R(p.preco)})`;
+}
+
+document.addEventListener("input", e => {
+  if(e.target.id === "vr-qtd") atualizarPreviewVenda();
+  if(e.target.id === "est-qtd") atualizarPreviewEstorno();
+});
+
+async function confirmarVendaRapida() {
+  const id   = document.getElementById("vr-produto-id").value;
+  const qtd  = parseInt(document.getElementById("vr-qtd").value)||1;
+  const pgto = document.getElementById("vr-pgto").value;
+  const p    = dados.estoque.find(x=>x.id===id); if(!p) return;
+  
+  const corSel = document.getElementById("vr-cor");
+  const corIdx = corSel ? parseInt(corSel.value) : NaN;
+  
+  const qty_atual = p.qty;
+  if(qty_atual < qtd) { toast("⚠️ Estoque insuficiente!", true); return; }
+  
+  if(!isNaN(corIdx) && p.cores && p.cores[corIdx]) {
+    if(p.cores[corIdx].qty < qtd) { toast("⚠️ Estoque dessa cor insuficiente!", true); return; }
+    p.cores[corIdx].qty -= qtd;
+    p.qty = p.cores.reduce((s,c)=>s+c.qty, 0);
+  } else {
+    p.qty -= qtd;
+  }
+  p.estoque = p.qty;
+  
+  const receita = p.preco * qtd;
+  dados.vendas.push({produto_id:p.id, produto_nome:p.nome,
+    qtd, preco_unitario:p.preco, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
+  dados.historico.unshift({tipo:"venda", produto_id:p.id,
+    produto_nome:p.nome, qtd, total:receita, pgto,
+    data:new Date().toISOString(), mes:mesAtual()});
+  
+  renderAll(); closeModal("ov-venda-rapida");
+  toast("🛒 Venda: " + qtd + "x " + p.nome + " — " + R(receita));
+}
+
+function openImagem(id) {
+  const p = dados.estoque.find(x=>x.id===id); if(!p) return;
+  document.getElementById("img-produto-id").value = id;
+  document.getElementById("img-url").value = p.foto || '';
+  const preview = document.getElementById("img-preview");
+  const placeholder = document.getElementById("img-placeholder");
+  if(p.foto) {
+    preview.src = p.foto; preview.style.display = "block";
+    placeholder.style.display = "none";
+  } else {
+    preview.style.display = "none";
+    placeholder.style.display = "flex";
+  }
+  openModal("ov-imagem");
+}
+
+function previewImagem(input) {
+  if(!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById("img-preview").src = e.target.result;
+    document.getElementById("img-preview").style.display = "block";
+    document.getElementById("img-placeholder").style.display = "none";
+    document.getElementById("img-url").value = e.target.result;
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function previewImagemUrl(url) {
+  if(!url) return;
+  const preview = document.getElementById("img-preview");
+  preview.src = url; preview.style.display = "block";
+  document.getElementById("img-placeholder").style.display = "none";
+}
+
+async function salvarImagem() {
+  const id  = document.getElementById("img-produto-id").value;
+  const url = document.getElementById("img-url").value || document.getElementById("img-preview").src;
+  const p   = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.foto = url;
+  await salvarProduto(p); renderAll(); closeModal("ov-imagem");
+  toast("📷 Foto salva!");
+}
+
+async function removerImagem() {
+  const id = document.getElementById("img-produto-id").value;
+  const p  = dados.estoque.find(x=>x.id===id); if(!p) return;
+  p.foto = "";
+  await salvarProduto(p); renderAll(); closeModal("ov-imagem");
+  toast("🗑 Foto removida");
+}
+
+function renderAll() { renderEstoque(); renderHistorico(); renderFinanceiro(); }
+
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const d = new Date();
+  document.getElementById("hdate").textContent = d.toLocaleDateString("pt-BR",{weekday:"short",day:"2-digit",month:"short"})+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+document.getElementById("edit-custo").addEventListener("input", calcEditMargem);
+document.getElementById("edit-preco").addEventListener("input", calcEditMargem);
+
+const CMDS = [
+  ['/estoque','Ver todos os produtos e quantidades'],
+  ['/produtos','Listar produtos com preços'],
+  ['/entrada [produto] [qtd]','Registrar entrada de estoque'],
+  ['/venda [produto] [qtd]','Registrar venda'],
+  ['/custo [produto] [valor]','Atualizar preco de custo'],
+  ['/preco [produto] [valor]','Atualizar preco de venda'],
+  ['/despesa [valor] [desc]','Registrar despesa'],
+  ['/despesas','Ver despesas do mes'],
+  ['/resumo','Resumo financeiro'],
+  ['/alerta','Produtos com estoque baixo'],
+];
+
+function renderTelegram() {
+  const el = document.getElementById('tg-cmds');
+  if(el) el.innerHTML = CMDS.map(([cmd,desc])=>`
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">${cmd}</div>
+      <div style="font-size:12px;color:var(--text2)">${desc}</div>
+    </div>`).join('');
+}
+
+async function checkBot() {
+  const TOKEN = '8723853827:AAFeOqlYT6goT6bbajCWpFmVLNnN2ZjR_H0';
+  const dot = document.getElementById('bot-status-dot');
+  const txt = document.getElementById('bot-status-txt');
+  try {
+    const r = await fetch('https://api.telegram.org/bot'+TOKEN+'/getMe');
+    const d = await r.json();
+    if(d.ok && dot && txt) {
+      dot.style.background='#2d7d4f';
+      txt.textContent = 'Bot online — @' + d.result.username + ' (Railway 24h)';
+      dot.style.animation='pulse 2s infinite';
+    }
+  } catch(e) {
+    if(dot) dot.style.background='var(--danger)';
+    if(txt) txt.textContent = 'Bot offline';
+  }
+}
+
+// ── GERAR PDF ─────────────────────────────────────────────────────────────────
+function gerarPDF() {
+  // Coleta dados atuais exibidos na tela
+  const mes = mesAtual();
+  const vendDataIni = document.getElementById("vend-data-ini")?.value || "";
+  const vendDataFim = document.getElementById("vend-data-fim")?.value || "";
+
+  // Período para o título
+  let periodoLabel = "";
+  if(vendDataIni && vendDataFim) {
+    periodoLabel = `${new Date(vendDataIni+"T12:00:00").toLocaleDateString("pt-BR")} a ${new Date(vendDataFim+"T12:00:00").toLocaleDateString("pt-BR")}`;
+  } else if(vendDataIni) {
+    periodoLabel = `A partir de ${new Date(vendDataIni+"T12:00:00").toLocaleDateString("pt-BR")}`;
+  } else if(vendDataFim) {
+    periodoLabel = `Até ${new Date(vendDataFim+"T12:00:00").toLocaleDateString("pt-BR")}`;
+  } else {
+    const [ano, m] = mes.split("-");
+    const nomes = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    periodoLabel = `${nomes[parseInt(m)-1]} de ${ano}`;
+  }
+
+  // Coleta dados do demonstrativo atual (pega dos elementos renderizados)
+  const finDemo = document.getElementById("fin-demo");
+  const kpis    = document.getElementById("fin-kpis");
+
+  // Coleta linhas da tabela de vendas (preserva data-nome real)
+  const linhasVendas = [];
+  document.querySelectorAll("#fin-produtos tr").forEach(tr => {
+    const tds = tr.querySelectorAll("td");
+    if(tds.length >= 5) {
+      linhasVendas.push({
+        nome:    tds[0].dataset.nome || tds[0].textContent.trim(),
+        qtd:     tds[1].textContent.trim(),
+        receita: tds[2].textContent.trim(),
+        lucro:   tds[3].textContent.trim(),
+        margem:  tds[4].textContent.trim(),
+        lucroPct: parseFloat(tds[4].textContent) || 0
+      });
+    }
+  });
+
+  // Coleta KPIs
+  const kpiCards = kpis ? kpis.querySelectorAll(".sum-card") : [];
+  const kpiData = [];
+  kpiCards.forEach(c => {
+    const lbl = c.querySelector(".lbl")?.textContent || "";
+    const val = c.querySelector(".val")?.textContent || "";
+    const sub = c.querySelector(".sub")?.textContent || "";
+    kpiData.push({lbl, val, sub});
+  });
+
+  // Monta linhas do demonstrativo
+  const demoRows = [];
+  if(finDemo) {
+    finDemo.querySelectorAll("div[style*='justify-content:space-between']").forEach(row => {
+      const spans = row.querySelectorAll("span, strong");
+      if(spans.length >= 2) {
+        demoRows.push({
+          label: spans[0].textContent.replace(/[📊💰🏷💸🛍️✅]/g,"").trim(),
+          valor: spans[spans.length-1].textContent.trim(),
+          destaque: row.style.background ? true : false
+        });
+      }
+    });
+  }
+
+  // Geração do HTML do PDF
+  const agora = new Date().toLocaleString("pt-BR");
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Relatório FinStack — ${periodoLabel}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Sora',Arial,sans-serif;color:#1a1917;background:#fff;font-size:12px;padding:32px 36px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:2px solid #1a4a6b;margin-bottom:24px}
+  .brand{font-size:22px;font-weight:700;color:#1a4a6b}.brand span{color:#2d7d4f}
+  .brand small{display:block;font-size:11px;font-weight:400;color:#6b6760;margin-top:2px}
+  .meta{text-align:right;font-size:11px;color:#6b6760}
+  .meta strong{display:block;font-size:14px;color:#1a1917;margin-bottom:2px}
+  .section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6b6760;margin:20px 0 10px;padding-bottom:4px;border-bottom:1px solid #ddd9d0}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
+  .kpi{background:#f5f3ee;border:1px solid #ddd9d0;border-radius:6px;padding:10px 12px}
+  .kpi .l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#9d9890;margin-bottom:4px}
+  .kpi .v{font-size:16px;font-weight:700;color:#1a4a6b;font-family:monospace}
+  .kpi .s{font-size:10px;color:#9d9890;margin-top:2px}
+  .kpi.ok .v{color:#2d7d4f}.kpi.danger .v{color:#b33a2b}
+  .demo-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0ede6;font-size:12px}
+  .demo-row.destaque{background:#e8f0f7;margin:6px -8px;padding:8px 8px;border-radius:4px;border:none;font-weight:600}
+  .demo-label{color:#6b6760}.demo-val{font-family:monospace;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:4px}
+  thead th{background:#1a4a6b;color:#fff;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;padding:8px 10px;text-align:left}
+  thead th:not(:first-child){text-align:right}
+  tbody tr{border-bottom:1px solid #f0ede6}
+  tbody tr:nth-child(even){background:#fafaf8}
+  tbody td{padding:7px 10px;font-size:11px;vertical-align:middle}
+  tbody td:not(:first-child){text-align:right;font-family:monospace}
+  .badge{display:inline-block;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600}
+  .ok{color:#2d7d4f}.danger{color:#b33a2b}.warn{color:#8a5e1a}
+  .totals-row td{font-weight:700;background:#f0ede6;border-top:2px solid #ddd9d0}
+  .footer{margin-top:28px;padding-top:12px;border-top:1px solid #ddd9d0;display:flex;justify-content:space-between;font-size:10px;color:#9d9890}
+  @media print{body{padding:16px 20px}@page{margin:1.2cm 1.5cm;size:A4}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="brand">Fin<span>Stack</span><small>Gestão de Estoque & Financeiro</small></div>
+  </div>
+  <div class="meta">
+    <strong>Relatório de Vendas</strong>
+    Período: ${periodoLabel}<br>
+    Gerado em: ${agora}
+  </div>
+</div>
+
+<div class="section-title">Resumo do Período</div>
+<div class="kpi-grid">
+  ${kpiData.map(k=>{
+    const isOk = k.val.includes("R$") && !k.lbl.includes("Despesa") && !k.lbl.includes("Custo");
+    const isDanger = k.lbl.includes("Despesa");
+    const cls = isDanger ? "danger" : (isOk ? "ok" : "");
+    return `<div class="kpi ${cls}"><div class="l">${k.lbl}</div><div class="v">${k.val}</div><div class="s">${k.sub}</div></div>`;
+  }).join("")}
+</div>
+
+<div class="section-title">Demonstrativo Financeiro</div>
+${demoRows.map(r=>`
+  <div class="demo-row${r.destaque?' destaque':''}">
+    <span class="demo-label">${r.label}</span>
+    <span class="demo-val">${r.valor.replace(/\(.*?\)/,"").trim()}</span>
+  </div>`).join("")}
+
+<div class="section-title">Vendas por Produto / Cor</div>
+<table>
+  <thead><tr>
+    <th>Produto / Cor</th>
+    <th>Qtd</th>
+    <th>Receita</th>
+    <th>Lucro (Shopee)</th>
+    <th>Margem</th>
+  </tr></thead>
+  <tbody>
+    ${linhasVendas.length ? linhasVendas.map(l=>{
+      const mgCls = l.lucroPct >= 20 ? "ok" : l.lucroPct >= 10 ? "warn" : "danger";
+      return `<tr>
+        <td>${l.nome}</td>
+        <td>${l.qtd}</td>
+        <td class="ok">${l.receita}</td>
+        <td class="${l.lucro.startsWith("-")?"danger":"ok"}">${l.lucro}</td>
+        <td class="${mgCls}">${l.margem}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="5" style="text-align:center;padding:16px;color:#9d9890">Nenhuma venda no período</td></tr>`}
+    ${linhasVendas.length > 1 ? (()=>{
+      const totQtd = linhasVendas.reduce((s,l)=>s+parseInt(l.qtd||0),0);
+      const totRec = linhasVendas.reduce((s,l)=>s+(parseFloat((l.receita||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
+      const totLuc = linhasVendas.reduce((s,l)=>s+(parseFloat((l.lucro||"").replace(/[R$\s.]/g,"").replace(",","."))||0),0);
+      const fR = (n) => "R$ " + n.toFixed(2).replace(".",",");
+      return "<tr style=\"font-weight:700;background:#f0ede6;border-top:2px solid #ddd9d0\"><td>TOTAL (" + linhasVendas.length + " itens)</td><td style=\"text-align:right\">" + totQtd + "</td><td style=\"text-align:right\">" + fR(totRec) + "</td><td style=\"text-align:right\">" + fR(totLuc) + "</td><td>-</td></tr>";
+    })() : ""}
+  </tbody>
+</table>
+
+<div class="footer">
+  <span>FinStack — Sistema de Gestão de Estoque & Financeiro</span>
+  <span>Relatório gerado automaticamente em ${agora}</span>
+</div>
+
+<script>window.onload=()=>{window.print();}<\/script>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank", "width=900,height=700");
+  if(!w) { toast("⚠️ Permita pop-ups para gerar o PDF!", true); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+
+// ── VISIBILIDADE NOMES ESTOQUE ───────────────────────────────────────────────
+let nomesEstoqueVisiveis = true;
+
+function toggleNomesEstoque() {
+  nomesEstoqueVisiveis = !nomesEstoqueVisiveis;
+  const btn = document.getElementById('btn-toggle-estoque');
+  if(btn) btn.textContent = nomesEstoqueVisiveis ? '👁' : '🙈';
+  aplicarEstadoNomesEstoque();
+}
+
+function aplicarEstadoNomesEstoque() {
+  if(nomesEstoqueVisiveis) return;
+  const btn = document.getElementById('btn-toggle-estoque');
+  if(btn) btn.textContent = '🙈';
+  document.querySelectorAll('.cell-nome-estoque').forEach(el => {
+    if(!el.dataset.nome) el.dataset.nome = el.textContent.trim();
+    el.textContent = '••••••••••••';
+    el.style.color = 'var(--text3)';
+    el.style.letterSpacing = '2px';
+    el.style.fontWeight = '600';
+  });
+}
+
+function restaurarNomesEstoque() {
+  document.querySelectorAll('.cell-nome-estoque').forEach(el => {
+    if(el.dataset.nome) el.textContent = el.dataset.nome;
+    el.style.color = '';
+    el.style.letterSpacing = '';
+    el.style.fontWeight = '';
+  });
+}
+
+
+// ── SIMULADOR DE PREÇOS ───────────────────────────────────────────────────────
+let simMargemAlvo = 0; // 0 = mostrar tudo
+
+function setMargemAlvo(m) {
+  simMargemAlvo = simMargemAlvo === m ? 0 : m;
+  document.querySelectorAll('.btn-margem').forEach(b => {
+    const bm = parseInt(b.dataset.m);
+    b.style.background = bm === simMargemAlvo ? 'var(--accent)' : '';
+    b.style.color = bm === simMargemAlvo ? '#fff' : '';
+    b.style.borderColor = bm === simMargemAlvo ? 'var(--accent)' : '';
+  });
+  const lbl = document.getElementById('sim-margem-alvo-label');
+  if(lbl) lbl.textContent = simMargemAlvo ? `Destacando faixas com ≥${simMargemAlvo}% de margem` : 'Mostrando todas as faixas';
+  simularPrecos();
+}
+
+function tarifaShopee(preco) {
+  if(preco <= 79.99)  return 4;
+  if(preco <= 99.99)  return 16;
+  if(preco <= 199.99) return 20;
+  if(preco <= 499.99) return 26;
+  return 26;
+}
+
+function calcShopee(custo, preco, impostoPct, adsPct, freteCusto) {
+  const comissao = preco * 0.20;
+  const tarifa   = tarifaShopee(preco);
+  const imposto  = preco * ((impostoPct || 0) / 100);
+  const ads      = preco * ((adsPct || 0) / 100);
+  const frete    = freteCusto || 0;
+  const lucro    = preco - comissao - tarifa - imposto - ads - frete - custo;
+  const margem   = preco > 0 ? (lucro / preco * 100) : 0;
+  return { comissao, tarifa, imposto, ads, frete, lucro, margem };
+}
+
+function calcML(custo, preco, tipo, impostoPct, adsPct, freteCusto) {
+  // Clássico: 16% | Premium: 19%
+  const pct = tipo === 'premium' ? 0.19 : 0.16;
+  const comissao = preco * pct;
+  const imposto  = preco * ((impostoPct || 0) / 100);
+  const ads      = preco * ((adsPct || 0) / 100);
+  const frete    = freteCusto || 0;
+  const lucro    = preco - comissao - imposto - ads - frete - custo;
+  const margem   = preco > 0 ? (lucro / preco * 100) : 0;
+  return { comissao, imposto, ads, frete, lucro, margem, pct };
+}
+
+function avaliacaoLabel(margem, alvo) {
+  if(alvo > 0) {
+    if(margem >= alvo + 10) return {txt:'🟢 Ótimo', cor:'var(--accent2)'};
+    if(margem >= alvo)      return {txt:'✅ Ideal', cor:'var(--accent2)'};
+    if(margem >= alvo - 5)  return {txt:'⚠️ Justo', cor:'var(--warn)'};
+    return {txt:'🔴 Baixo', cor:'var(--danger)'};
+  }
+  if(margem >= 30) return {txt:'🟢 Ótimo', cor:'var(--accent2)'};
+  if(margem >= 20) return {txt:'✅ Bom', cor:'var(--accent2)'};
+  if(margem >= 10) return {txt:'⚠️ Razoável', cor:'var(--warn)'};
+  if(margem >= 0)  return {txt:'🔴 Apertado', cor:'var(--danger)'};
+  return {txt:'❌ Prejuízo', cor:'var(--danger)'};
+}
+
+function simularPrecos() {
+  const custoBase   = parseFloat(document.getElementById('sim-custo')?.value) || 0;
+  const embalagem   = parseFloat(document.getElementById('sim-embalagem')?.value) || 0;
+  const outros      = parseFloat(document.getElementById('sim-outros')?.value) || 0;
+  const impostoPct  = parseFloat(document.getElementById('sim-imposto')?.value) || 0;
+  const adsPct      = parseFloat(document.getElementById('sim-ads')?.value) || 0;
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteTipo     = document.getElementById('sim-frete-tipo')?.value || 'gratis';
+  // Valor que o vendedor realmente paga após desconto do ML
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  // Se frete grátis pro cliente = vendedor absorve o custo líquido
+  // Se frete pago pelo cliente = não sai do bolso do vendedor
+  const freteCusto    = freteTipo === 'gratis' ? freteLiquido : 0;
+  const custo       = custoBase + embalagem + outros;
+
+  const vazio  = document.getElementById('sim-vazio');
+  const result = document.getElementById('sim-resultado');
+
+  if(custo <= 0) {
+    if(vazio)  vazio.style.display  = 'block';
+    if(result) result.style.display = 'none';
+    return;
+  }
+
+  if(vazio)  vazio.style.display  = 'none';
+  if(result) result.style.display = 'block';
+
+  // Gerar faixas de preço: custo × 1.3 até custo × 3.5, em ~10 pontos
+  const minPreco = Math.ceil(custo * 1.3);
+  const maxPreco = Math.ceil(custo * 3.5);
+  const step = Math.max(1, Math.round((maxPreco - minPreco) / 10));
+
+  const faixas = [];
+  for(let p = minPreco; p <= maxPreco; p += step) {
+    // Arredondar para preços "bonitos" (ex: 29,90 → 29.9)
+    const arredondado = Math.floor(p) - 0.10;
+    if(arredondado > custo) faixas.push(parseFloat(arredondado.toFixed(2)));
+  }
+  // Garantir pelo menos 6 faixas
+  if(faixas.length < 6) {
+    for(let p = minPreco; p <= maxPreco; p += Math.max(1, step/2)) {
+      const ar = Math.floor(p) - 0.10;
+      if(!faixas.includes(ar) && ar > custo) faixas.push(parseFloat(ar.toFixed(2)));
+    }
+    faixas.sort((a,b) => a-b);
+  }
+
+  // ── SHOPEE ──
+  const shopeeRows = faixas.map((preco, idx) => {
+    const r = calcShopee(custo, preco, impostoPct, adsPct, freteCusto);
+    const av = avaliacaoLabel(r.margem, simMargemAlvo);
+    const destaque = simMargemAlvo > 0 && r.margem >= simMargemAlvo;
+    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
+    return `<tr style="${destaque ? 'background:var(--accent2-light);font-weight:600' : ''}">
+      <td style="font-size:12px;color:var(--text3)">${faixaLabel}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent)">${R(preco)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.comissao)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.tarifa)}</td>
+      ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(r.ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      ${freteCusto > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(r.frete)} <span style="font-size:10px">(grátis)</span></td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${r.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(r.lucro)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${av.cor};font-weight:600">${r.margem.toFixed(1)}%</td>
+      <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
+    </tr>`;
+  });
+  document.getElementById('sim-shopee-tbody').innerHTML = shopeeRows.join('');
+
+  // ── MERCADO LIVRE ──
+  const mlRows = [];
+  faixas.forEach((preco, idx) => {
+    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
+    ['classico','premium'].forEach(tipo => {
+      const r = calcML(custo, preco, tipo, impostoPct, adsPct, freteCusto);
+      const av = avaliacaoLabel(r.margem, simMargemAlvo);
+      const destaque = simMargemAlvo > 0 && r.margem >= simMargemAlvo;
+      const tipoLabel = tipo === 'classico' ? '🔵 Clássico (16%)' : '⭐ Premium (19%)';
+      mlRows.push(`<tr style="${destaque ? 'background:#fff9e6;font-weight:600' : ''}">
+        <td style="font-size:12px"><span style="color:var(--text3)">${faixaLabel}</span> ${tipoLabel}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#b7791f">${R(preco)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.comissao)}</td>
+        ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(r.ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        ${freteCusto > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(r.frete)} <span style="font-size:10px">(grátis)</span></td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">Pago</td>'}
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${r.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(r.lucro)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${av.cor};font-weight:600">${r.margem.toFixed(1)}%</td>
+        <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
+      </tr>`);
+    });
+  });
+  document.getElementById('sim-ml-tbody').innerHTML = mlRows.join('');
+
+  // ── COMPARATIVO ──
+  // Melhor faixa para cada plataforma (maior margem positiva)
+  const melhorShopee = faixas
+    .map(p => ({preco:p, ...calcShopee(custo, p, impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const melhorMLClass = faixas
+    .map(p => ({preco:p, ...calcML(custo, p, 'classico', impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const melhorMLPrem = faixas
+    .map(p => ({preco:p, ...calcML(custo, p, 'premium', impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const cardComp = (titulo, icone, cor, r) => r ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;border-left:3px solid ${cor}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:20px">${icone}</span>
+        <span style="font-size:13px;font-weight:600;color:${cor}">${titulo}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--text2)">Preço sugerido</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${cor}">${R(r.preco)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--text2)">Lucro por unidade</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--accent2)">${R(r.lucro)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text2)">Margem líquida</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent2)">${r.margem.toFixed(1)}%</span>
+      </div>
+    </div>` : '';
+
+  document.getElementById('sim-comparativo').innerHTML = [
+    melhorShopee  ? cardComp('Shopee (melhor faixa)', '🛍️', '#d4380d', melhorShopee) : '',
+    melhorMLClass ? cardComp('ML Clássico (melhor faixa)', '🔵', '#b7791f', melhorMLClass) : '',
+    melhorMLPrem  ? cardComp('ML Premium (melhor faixa)', '⭐', '#b7791f', melhorMLPrem) : '',
+  ].filter(Boolean).join('');
+}
+
+function limparSimulador() {
+  ['sim-nome','sim-custo','sim-embalagem','sim-outros','sim-imposto','sim-ads','sim-preco-manual'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = id.includes('custo') || id.includes('embalagem') || id.includes('outros') ? '0' : '';
+  });
+  simMargemAlvo = 0;
+  document.querySelectorAll('.btn-margem').forEach(b => {
+    b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
+  });
+  const lbl = document.getElementById('sim-margem-alvo-label');
+  if(lbl) lbl.textContent = 'Mostrando todas as faixas';
+  limparPrecoManual();
+  const frLiq = document.getElementById('sim-frete-liquido');
+  if(frLiq) { frLiq.textContent = 'R$ 0,00'; frLiq.style.color='var(--danger)'; }
+  const frCob = document.getElementById('sim-frete-cobertura');
+  if(frCob) frCob.value = '50';
+  document.getElementById('sim-vazio').style.display = 'block';
+  document.getElementById('sim-resultado').style.display = 'none';
+}
+
+
+// ── CALC FRETE LÍQUIDO (display em tempo real) ───────────────────────────────
+function calcFreteLiquido() {
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  const el = document.getElementById('sim-frete-liquido');
+  if(el) {
+    el.textContent = R(freteLiquido);
+    el.style.color = freteLiquido > 0 ? 'var(--danger)' : 'var(--accent2)';
+    el.style.background = freteLiquido > 0 ? 'var(--danger-light)' : 'var(--accent2-light)';
+    el.style.borderColor = freteLiquido > 0 ? '#f0c4be' : '#b7e4c7';
+  }
+}
+
+// ── SIMULADOR PREÇO MANUAL ────────────────────────────────────────────────────
+function simularPrecoManual() {
+  const preco = parseFloat(document.getElementById('sim-preco-manual')?.value) || 0;
+  const div   = document.getElementById('sim-manual-resultado');
+  if(!div) return;
+
+  if(preco <= 0) { div.style.display = 'none'; return; }
+
+  const custoBase  = parseFloat(document.getElementById('sim-custo')?.value) || 0;
+  const embalagem  = parseFloat(document.getElementById('sim-embalagem')?.value) || 0;
+  const outros     = parseFloat(document.getElementById('sim-outros')?.value) || 0;
+  const impostoPct = parseFloat(document.getElementById('sim-imposto')?.value) || 0;
+  const adsPct     = parseFloat(document.getElementById('sim-ads')?.value) || 0;
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteTipo     = document.getElementById('sim-frete-tipo')?.value || 'gratis';
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  const freteCusto    = freteTipo === 'gratis' ? freteLiquido : 0;
+  const custo      = custoBase + embalagem + outros;
+
+  if(custo <= 0) { div.style.display = 'none'; toast('Preencha o custo do produto primeiro!', true); return; }
+
+  const sh  = calcShopee(custo, preco, impostoPct, adsPct, freteCusto);
+  const mlC = calcML(custo, preco, 'classico', impostoPct, adsPct, freteCusto);
+  const mlP = calcML(custo, preco, 'premium',  impostoPct, adsPct, freteCusto);
+
+  const linha = (label, valor, cor) =>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--text2)">${label}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${cor}">${valor}</span>
+    </div>`;
+
+  const card = (titulo, icone, corTitulo, corBorda, dados) => `
+    <div style="border:1px solid ${corBorda};border-radius:var(--radius);overflow:hidden">
+      <div style="background:${corBorda}18;padding:10px 14px;border-bottom:1px solid ${corBorda};display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">${icone}</span>
+        <span style="font-size:13px;font-weight:700;color:${corTitulo}">${titulo}</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${corTitulo}">${R(preco)}</span>
+      </div>
+      <div style="padding:0 14px 8px">
+        ${dados}
+        <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;background:${dados.includes('Prejuízo')?'var(--danger-light)':'var(--accent2-light)'};margin:8px -14px -8px;padding:8px 14px;border-top:2px solid ${corBorda}">
+          <span style="font-size:13px;font-weight:700">Lucro líquido</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${dados.includes('var(--danger)')&&dados.lastIndexOf('var(--danger)')>dados.lastIndexOf('var(--accent2)')? 'var(--danger)':'var(--accent2)'}">${dados}</span>
+        </div>
+      </div>
+    </div>`;
+
+  const rowsShopee = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão Shopee (20%)', '− ' + R(sh.comissao), 'var(--danger)')}
+    ${linha('− Tarifa fixa', '− ' + R(sh.tarifa), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(sh.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(sh.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const rowsMLClass = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão ML Clássico (16%)', '− ' + R(mlC.comissao), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlC.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlC.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const rowsMLPrem = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão ML Premium (19%)', '− ' + R(mlP.comissao), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlP.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlP.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const avSh  = avaliacaoLabel(sh.margem,  simMargemAlvo);
+  const avMlC = avaliacaoLabel(mlC.margem, simMargemAlvo);
+  const avMlP = avaliacaoLabel(mlP.margem, simMargemAlvo);
+
+  document.getElementById('sim-manual-cards').innerHTML = `
+    <!-- Shopee -->
+    <div style="border:1px solid #fca5a5;border-radius:var(--radius);overflow:hidden">
+      <div style="background:#fff5f5;padding:10px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🛍️</span>
+        <span style="font-size:13px;font-weight:700;color:#d4380d">Shopee</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#d4380d">${R(preco)}</span>
+      </div>
+      <div style="padding:0 14px">
+        ${rowsShopee}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;margin-top:4px;border-top:2px solid #fca5a5">
+          <div>
+            <div style="font-size:13px;font-weight:700">Lucro líquido</div>
+            <div style="font-size:11px;color:${avSh.cor}">${avSh.txt} — Margem: ${sh.margem.toFixed(1)}%</div>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:${sh.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(sh.lucro)}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ML wrapper com 2 sub-cards -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <!-- ML Clássico -->
+      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
+        <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">🔵</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Clássico (16%)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+        </div>
+        <div style="padding:0 14px">
+          ${rowsMLClass}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
+            <div>
+              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
+              <div style="font-size:11px;color:${avMlC.cor}">${avMlC.txt} — ${mlC.margem.toFixed(1)}%</div>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlC.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlC.lucro)}</span>
+          </div>
+        </div>
+      </div>
+      <!-- ML Premium -->
+      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
+        <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">⭐</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Premium (19%)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+        </div>
+        <div style="padding:0 14px">
+          ${rowsMLPrem}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
+            <div>
+              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
+              <div style="font-size:11px;color:${avMlP.cor}">${avMlP.txt} — ${mlP.margem.toFixed(1)}%</div>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlP.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlP.lucro)}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  div.style.display = 'block';
+}
+
+function limparPrecoManual() {
+  const inp = document.getElementById('sim-preco-manual');
+  if(inp) inp.value = '';
+  const div = document.getElementById('sim-manual-resultado');
+  if(div) div.style.display = 'none';
+}
+
+
+// ── INTEGRAÇÃO MERCADO LIVRE ──────────────────────────────────────────────────
+const ML_APP_ID    = "1201355025627006";
+const ML_REDIRECT  = "https://viniciussj0.github.io/mosquiteiros-estoque/estoque.html";
+const ML_PROXY     = "https://powerful-acceptance-production-4ae8.up.railway.app";
+let mlToken        = null;
+let mlUserId       = null;
+let mlUserNick     = null;
+let mlCepOrigem    = null;
+
+// Verifica se voltou do OAuth ML (código na URL)
+async function checkMLCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('code');
+  if(!code) {
+    // Tenta carregar token salvo
+    const saved = localStorage.getItem('ml_token');
+    if(saved) {
+      try {
+        const t = JSON.parse(saved);
+        if(t.expires_at && Date.now() < t.expires_at) {
+          mlToken = t.access_token;
+          await carregarPerfilML();
+          return;
+        }
+      } catch(e) {}
+      localStorage.removeItem('ml_token');
+    }
+    return;
+  }
+  // Trocar code por token via proxy CORS
+  setSyncLabel("Conectando ao ML...");
+  try {
+    // Usa um proxy público para fazer a troca (evita CORS)
+    const resp = await fetch(ML_PROXY + '/ml/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code: code})
+    });
+    const data = await resp.json();
+    if(data.access_token) {
+      mlToken = data.access_token;
+      const expiresAt = Date.now() + (data.expires_in * 1000);
+      localStorage.setItem('ml_token', JSON.stringify({access_token: mlToken, expires_at: expiresAt}));
+      // Limpar code da URL sem recarregar
+      window.history.replaceState({}, '', window.location.pathname);
+      await carregarPerfilML();
+      toast('✅ Mercado Livre conectado!');
+    } else {
+      toast('⚠️ Erro ao conectar ML: ' + (data.message || 'Tente novamente'), true);
+    }
+  } catch(e) {
+    console.error('ML OAuth error:', e);
+    toast('⚠️ Erro de conexão com ML', true);
+  }
+  setSyncLabel("Sincronizado ✓");
+}
+
+async function carregarPerfilML() {
+  if(!mlToken) return;
+  try {
+    const resp = await fetch(ML_PROXY + '/ml/me', {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const user = await resp.json();
+    if(user.id) {
+      mlUserId   = user.id;
+      mlUserNick = user.nickname || user.first_name || 'Conectado';
+      // Pegar CEP de origem do endereço do usuário
+      if(user.address && user.address.zip) {
+        mlCepOrigem = user.address.zip.replace(/\D/g,'');
+      }
+      atualizarStatusML(true);
+      await carregarAnunciosML();
+    }
+  } catch(e) {
+    console.error('Erro ao carregar perfil ML:', e);
+  }
+}
+
+function atualizarStatusML(conectado) {
+  const desc = document.getElementById('ml-status-desconectado');
+  const con  = document.getElementById('ml-status-conectado');
+  const nome = document.getElementById('ml-user-nome');
+  const pain = document.getElementById('ml-frete-painel');
+  if(conectado) {
+    if(desc) desc.style.display = 'none';
+    if(con)  { con.style.display = 'flex'; }
+    if(nome) nome.textContent = '✅ ' + mlUserNick;
+    if(pain) pain.style.display = 'block';
+  } else {
+    if(desc) desc.style.display = 'flex';
+    if(con)  con.style.display  = 'none';
+    if(pain) pain.style.display = 'none';
+  }
+}
+
+function loginML() {
+  const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${ML_APP_ID}&redirect_uri=${encodeURIComponent(ML_REDIRECT)}`;
+  window.location.href = authUrl;
+}
+
+function logoutML() {
+  mlToken = null; mlUserId = null; mlUserNick = null;
+  localStorage.removeItem('ml_token');
+  atualizarStatusML(false);
+  const selAnuncio = document.getElementById('sim-ml-anuncio');
+  if(selAnuncio) selAnuncio.innerHTML = '<option value="">🔌 Conecte ao ML para ver seus anúncios</option>';
+  const frRes = document.getElementById('ml-frete-resultado');
+  if(frRes) frRes.textContent = 'Selecione um anúncio acima para calcular o frete';
+  toast('Desconectado do Mercado Livre');
+}
+
+
 
 // ── IMPORTADOR SHOPEE ─────────────────────────────────────────────────────────
 let shopeeData = [];
