@@ -129,10 +129,34 @@ def ml_custos(item_id):
             pct = 0.135 if lt_id == "gold_special" else 0.165
             taxas[lt_nome] = {"fee_amount": preco * pct, "percentage": pct * 100, "fixed_fee": 0}
 
-    # Frete
-    r_frete = requests.get(f"https://api.mercadolibre.com/items/{item_id}/shipping_options",
-                           headers={"Authorization": f"Bearer {token}"})
-    frete_data = r_frete.json()
+    # Frete grátis — endpoint correto do simulador ML (custo que o vendedor paga)
+    # GET /users/{user_id}/shipping_options/free?item_id={item_id}
+    seller_id = item_data.get("seller_id")
+    frete_options = []
+    free_cost_full = 0      # custo cheio do frete
+    free_cost_seller = 0    # o que o vendedor paga (com desconto reputação)
+
+    try:
+        r_free = requests.get(
+            f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free?item_id={item_id}",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        fr = r_free.json()
+        # A resposta tem coverage.all_country com list_cost, cost, discount
+        cov = fr.get("coverage", {}).get("all_country", {})
+        if cov:
+            free_cost_seller = cov.get("list_cost", 0)   # o que vendedor paga (já com desconto)
+            # promoted_amount = valor cheio antes do desconto
+            disc = cov.get("discount", {})
+            free_cost_full = disc.get("promoted_amount", free_cost_seller) if disc else free_cost_seller
+            frete_options = [{
+                "name": "Mercado Envios (frete grátis)",
+                "list_cost": free_cost_full,
+                "seller_cost": free_cost_seller,
+                "cost": cov.get("cost", 0)
+            }]
+    except Exception as e:
+        print("free shipping erro:", e)
 
     return jsonify({
         "item": {
@@ -143,7 +167,9 @@ def ml_custos(item_id):
             "category_id":  category_id,
         },
         "taxas": taxas,
-        "frete": frete_data.get("options", [])
+        "frete": frete_options,
+        "frete_cheio": free_cost_full,
+        "frete_vendedor": free_cost_seller
     })
 
 
