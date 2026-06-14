@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -125,6 +124,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   <div class="tab" onclick="showPage('financeiro',this)">📊 Financeiro</div>
   <div class="tab" onclick="showPage('telegram',this)">📱 Telegram</div>
   <div class="tab" onclick="showPage('shopee',this)">🛍️ Importar Shopee</div>
+  <div class="tab" onclick="showPage('simulador',this)">🧮 Simulador</div>
 </nav>
 
 <div class="main">
@@ -359,6 +359,194 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div style="text-align:center">
         <button onclick="limparShopee()" class="btn btn-outline">✕ Limpar e importar outro arquivo</button>
       </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ SIMULADOR ════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-simulador">
+  <div style="max-width:900px;margin:0 auto">
+
+    <!-- Formulário -->
+    <div class="twrap" style="margin-bottom:1.5rem">
+      <div style="background:var(--surface2);padding:12px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>🧮 Simulador de Preço para Marketplaces</span>
+        <div id="ml-auth-area" style="display:flex;align-items:center;gap:8px">
+          <div id="ml-status-desconectado" style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--text3);font-weight:400;text-transform:none">Conecte ao ML para taxas e frete em tempo real</span>
+            <button onclick="loginML()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius-sm);font-size:12px;font-weight:600;color:#b7791f;cursor:pointer;white-space:nowrap">
+              🛒 Conectar Mercado Livre
+            </button>
+          </div>
+          <div id="ml-status-conectado" style="display:none;align-items:center;gap:8px">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--accent2)"></div>
+            <span id="ml-user-nome" style="font-size:11px;color:var(--accent2);font-weight:600;text-transform:none"></span>
+            <button onclick="logoutML()" style="padding:4px 8px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;cursor:pointer;color:var(--text3)">Desconectar</button>
+          </div>
+        </div>
+      </div>
+      <div style="padding:1.25rem">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr auto;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Nome do Produto</label>
+            <input type="text" id="sim-nome" placeholder="Ex: Mosquiteiro Casal" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Sora',sans-serif;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">CEP Destino</label>
+            <input type="text" id="sim-cep-destino" placeholder="Ex: 01310100" maxlength="8" oninput="this.value=this.value.replace(/\D/g,'');buscarFreteML()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo do Produto (R$)</label>
+            <input type="number" id="sim-custo" placeholder="0,00" step="0.01" min="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Custo Embalagem (R$)</label>
+            <input type="number" id="sim-embalagem" placeholder="0,00" step="0.01" min="0" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Outros Custos (R$)</label>
+            <input type="number" id="sim-outros" placeholder="0,00" step="0.01" min="0" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Imposto (%)</label>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="sim-imposto" placeholder="0" step="0.1" min="0" max="100" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+              <span style="font-size:13px;font-weight:600;color:var(--text2);white-space:nowrap">%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">ADS / Marketing (%)</label>
+            <div style="display:flex;align-items:center;gap:4px">
+              <input type="number" id="sim-ads" placeholder="0" step="0.1" min="0" max="100" value="0" oninput="simularPrecos()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none">
+              <span style="font-size:13px;font-weight:600;color:var(--text2);white-space:nowrap">%</span>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px">Frete ML</label>
+            <a href="https://www.mercadolivre.com.br/simulador-de-custos?" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius-sm);font-size:12px;font-weight:600;color:#b7791f;text-decoration:none;white-space:nowrap;transition:all .15s;height:40px" onmouseover="this.style.background='#fde58a'" onmouseout="this.style.background='#fff9e6'">
+              🛒 Simular no ML
+            </a>
+          </div>
+          <div>
+            <button onclick="limparSimulador()" class="btn btn-outline" style="white-space:nowrap">✕ Limpar</button>
+          </div>
+        </div>
+
+        <!-- Margem desejada -->
+        <div style="margin-top:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:500;color:var(--text2)">Margem líquida desejada:</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="setMargemAlvo(15)" class="btn-margem btn btn-outline btn-sm" data-m="15">15%</button>
+            <button onclick="setMargemAlvo(20)" class="btn-margem btn btn-outline btn-sm" data-m="20">20%</button>
+            <button onclick="setMargemAlvo(25)" class="btn-margem btn btn-outline btn-sm" data-m="25">25%</button>
+            <button onclick="setMargemAlvo(30)" class="btn-margem btn btn-outline btn-sm" data-m="30">30%</button>
+            <button onclick="setMargemAlvo(35)" class="btn-margem btn btn-outline btn-sm" data-m="35">35%</button>
+          </div>
+          <span id="sim-margem-alvo-label" style="font-size:12px;color:var(--text3)">Mostrando todas as faixas</span>
+        </div>
+
+        <!-- Painel Frete ML em tempo real -->
+        <div id="ml-frete-painel" style="display:none;margin-top:14px;padding:12px 16px;background:#fff9e6;border:1px solid #fde58a;border-radius:var(--radius)">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600;color:#b7791f">🚚 Frete em tempo real — Mercado Livre</div>
+            <button onclick="buscarFreteML()" style="padding:4px 10px;background:#b7791f;color:#fff;border:none;border-radius:var(--radius-sm);font-size:11px;cursor:pointer">🔄 Atualizar</button>
+          </div>
+          <div id="ml-frete-resultado" style="font-size:12px;color:var(--text2)">Digite o CEP de destino acima para calcular o frete</div>
+        </div>
+
+        <!-- Preço Manual -->
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:500;color:var(--text2);white-space:nowrap">💰 Simular preço manual:</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:13px;color:var(--text2)">R$</span>
+            <input type="number" id="sim-preco-manual" placeholder="Ex: 199,90" step="0.01" min="0" oninput="simularPrecoManual()" style="padding:7px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;width:130px;background:var(--accent-light)">
+          </div>
+          <button onclick="limparPrecoManual()" class="btn btn-outline btn-sm">✕</button>
+          <span style="font-size:11px;color:var(--text3)">Calcule o resultado exato para um preço específico</span>
+        </div>
+
+        <!-- Resultado preço manual -->
+        <div id="sim-manual-resultado" style="display:none;margin-top:12px;display:none">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="sim-manual-cards"></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Resultado -->
+    <div id="sim-resultado" style="display:none">
+
+      <!-- Shopee -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:#fff5f5;padding:12px 16px;border-bottom:1px solid #fde0d0;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🛍️</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#d4380d">Shopee</div>
+            <div style="font-size:11px;color:var(--text3)">Comissão 20% (14%+6% frete grátis) + tarifa fixa por item</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Faixa</th>
+              <th style="text-align:right">Preço Venda</th>
+              <th style="text-align:right">Comissão 20%</th>
+              <th style="text-align:right">Tarifa Fixa</th>
+              <th style="text-align:right" id="sh-col-imposto" style="display:none">Imposto</th>
+              <th style="text-align:right">ADS</th>
+              <th style="text-align:right">Frete</th>
+              <th style="text-align:right">Custo Total</th>
+              <th style="text-align:right">Lucro</th>
+              <th style="text-align:right">Margem</th>
+              <th style="text-align:center">Avaliação</th>
+            </tr></thead>
+            <tbody id="sim-shopee-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Mercado Livre -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:#fff9e6;padding:12px 16px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🛒</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#b7791f">Mercado Livre</div>
+            <div style="font-size:11px;color:var(--text3)">Clássico: 16% | Premium: 19% (frete grátis acima de R$79)</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th>Tipo / Faixa</th>
+              <th style="text-align:right">Preço Venda</th>
+              <th style="text-align:right">Comissão</th>
+              <th style="text-align:right" id="ml-col-imposto">Imposto</th>
+              <th style="text-align:right">ADS</th>
+              <th style="text-align:right">Frete</th>
+              <th style="text-align:right">Custo Total</th>
+              <th style="text-align:right">Lucro</th>
+              <th style="text-align:right">Margem</th>
+              <th style="text-align:center">Avaliação</th>
+            </tr></thead>
+            <tbody id="sim-ml-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Resumo comparativo -->
+      <div class="twrap" style="margin-bottom:1rem">
+        <div style="background:var(--surface2);padding:12px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">📊 Comparativo — Preço recomendado por plataforma</div>
+        <div id="sim-comparativo" style="padding:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem"></div>
+      </div>
+
+    </div>
+
+    <!-- Estado vazio -->
+    <div id="sim-vazio" style="text-align:center;padding:4rem 1rem;color:var(--text3)">
+      <div style="font-size:48px;margin-bottom:12px">🧮</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">Preencha o custo do produto</div>
+      <div style="font-size:13px">O simulador vai calcular os melhores preços para cada marketplace</div>
     </div>
 
   </div>
@@ -2043,6 +2231,563 @@ function restaurarNomesEstoque() {
   });
 }
 
+
+// ── SIMULADOR DE PREÇOS ───────────────────────────────────────────────────────
+let simMargemAlvo = 0; // 0 = mostrar tudo
+
+function setMargemAlvo(m) {
+  simMargemAlvo = simMargemAlvo === m ? 0 : m;
+  document.querySelectorAll('.btn-margem').forEach(b => {
+    const bm = parseInt(b.dataset.m);
+    b.style.background = bm === simMargemAlvo ? 'var(--accent)' : '';
+    b.style.color = bm === simMargemAlvo ? '#fff' : '';
+    b.style.borderColor = bm === simMargemAlvo ? 'var(--accent)' : '';
+  });
+  const lbl = document.getElementById('sim-margem-alvo-label');
+  if(lbl) lbl.textContent = simMargemAlvo ? `Destacando faixas com ≥${simMargemAlvo}% de margem` : 'Mostrando todas as faixas';
+  simularPrecos();
+}
+
+function tarifaShopee(preco) {
+  if(preco <= 79.99)  return 4;
+  if(preco <= 99.99)  return 16;
+  if(preco <= 199.99) return 20;
+  if(preco <= 499.99) return 26;
+  return 26;
+}
+
+function calcShopee(custo, preco, impostoPct, adsPct, freteCusto) {
+  const comissao = preco * 0.20;
+  const tarifa   = tarifaShopee(preco);
+  const imposto  = preco * ((impostoPct || 0) / 100);
+  const ads      = preco * ((adsPct || 0) / 100);
+  const frete    = freteCusto || 0;
+  const lucro    = preco - comissao - tarifa - imposto - ads - frete - custo;
+  const margem   = preco > 0 ? (lucro / preco * 100) : 0;
+  return { comissao, tarifa, imposto, ads, frete, lucro, margem };
+}
+
+function calcML(custo, preco, tipo, impostoPct, adsPct, freteCusto) {
+  // Clássico: 16% | Premium: 19%
+  const pct = tipo === 'premium' ? 0.19 : 0.16;
+  const comissao = preco * pct;
+  const imposto  = preco * ((impostoPct || 0) / 100);
+  const ads      = preco * ((adsPct || 0) / 100);
+  const frete    = freteCusto || 0;
+  const lucro    = preco - comissao - imposto - ads - frete - custo;
+  const margem   = preco > 0 ? (lucro / preco * 100) : 0;
+  return { comissao, imposto, ads, frete, lucro, margem, pct };
+}
+
+function avaliacaoLabel(margem, alvo) {
+  if(alvo > 0) {
+    if(margem >= alvo + 10) return {txt:'🟢 Ótimo', cor:'var(--accent2)'};
+    if(margem >= alvo)      return {txt:'✅ Ideal', cor:'var(--accent2)'};
+    if(margem >= alvo - 5)  return {txt:'⚠️ Justo', cor:'var(--warn)'};
+    return {txt:'🔴 Baixo', cor:'var(--danger)'};
+  }
+  if(margem >= 30) return {txt:'🟢 Ótimo', cor:'var(--accent2)'};
+  if(margem >= 20) return {txt:'✅ Bom', cor:'var(--accent2)'};
+  if(margem >= 10) return {txt:'⚠️ Razoável', cor:'var(--warn)'};
+  if(margem >= 0)  return {txt:'🔴 Apertado', cor:'var(--danger)'};
+  return {txt:'❌ Prejuízo', cor:'var(--danger)'};
+}
+
+function simularPrecos() {
+  const custoBase   = parseFloat(document.getElementById('sim-custo')?.value) || 0;
+  const embalagem   = parseFloat(document.getElementById('sim-embalagem')?.value) || 0;
+  const outros      = parseFloat(document.getElementById('sim-outros')?.value) || 0;
+  const impostoPct  = parseFloat(document.getElementById('sim-imposto')?.value) || 0;
+  const adsPct      = parseFloat(document.getElementById('sim-ads')?.value) || 0;
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteTipo     = document.getElementById('sim-frete-tipo')?.value || 'gratis';
+  // Valor que o vendedor realmente paga após desconto do ML
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  // Se frete grátis pro cliente = vendedor absorve o custo líquido
+  // Se frete pago pelo cliente = não sai do bolso do vendedor
+  const freteCusto    = freteTipo === 'gratis' ? freteLiquido : 0;
+  const custo       = custoBase + embalagem + outros;
+
+  const vazio  = document.getElementById('sim-vazio');
+  const result = document.getElementById('sim-resultado');
+
+  if(custo <= 0) {
+    if(vazio)  vazio.style.display  = 'block';
+    if(result) result.style.display = 'none';
+    return;
+  }
+
+  if(vazio)  vazio.style.display  = 'none';
+  if(result) result.style.display = 'block';
+
+  // Gerar faixas de preço: custo × 1.3 até custo × 3.5, em ~10 pontos
+  const minPreco = Math.ceil(custo * 1.3);
+  const maxPreco = Math.ceil(custo * 3.5);
+  const step = Math.max(1, Math.round((maxPreco - minPreco) / 10));
+
+  const faixas = [];
+  for(let p = minPreco; p <= maxPreco; p += step) {
+    // Arredondar para preços "bonitos" (ex: 29,90 → 29.9)
+    const arredondado = Math.floor(p) - 0.10;
+    if(arredondado > custo) faixas.push(parseFloat(arredondado.toFixed(2)));
+  }
+  // Garantir pelo menos 6 faixas
+  if(faixas.length < 6) {
+    for(let p = minPreco; p <= maxPreco; p += Math.max(1, step/2)) {
+      const ar = Math.floor(p) - 0.10;
+      if(!faixas.includes(ar) && ar > custo) faixas.push(parseFloat(ar.toFixed(2)));
+    }
+    faixas.sort((a,b) => a-b);
+  }
+
+  // ── SHOPEE ──
+  const shopeeRows = faixas.map((preco, idx) => {
+    const r = calcShopee(custo, preco, impostoPct, adsPct, freteCusto);
+    const av = avaliacaoLabel(r.margem, simMargemAlvo);
+    const destaque = simMargemAlvo > 0 && r.margem >= simMargemAlvo;
+    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
+    return `<tr style="${destaque ? 'background:var(--accent2-light);font-weight:600' : ''}">
+      <td style="font-size:12px;color:var(--text3)">${faixaLabel}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent)">${R(preco)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.comissao)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.tarifa)}</td>
+      ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(r.ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      ${freteCusto > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(r.frete)} <span style="font-size:10px">(grátis)</span></td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${r.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(r.lucro)}</td>
+      <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${av.cor};font-weight:600">${r.margem.toFixed(1)}%</td>
+      <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
+    </tr>`;
+  });
+  document.getElementById('sim-shopee-tbody').innerHTML = shopeeRows.join('');
+
+  // ── MERCADO LIVRE ──
+  const mlRows = [];
+  faixas.forEach((preco, idx) => {
+    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
+    ['classico','premium'].forEach(tipo => {
+      const r = calcML(custo, preco, tipo, impostoPct, adsPct, freteCusto);
+      const av = avaliacaoLabel(r.margem, simMargemAlvo);
+      const destaque = simMargemAlvo > 0 && r.margem >= simMargemAlvo;
+      const tipoLabel = tipo === 'classico' ? '🔵 Clássico (16%)' : '⭐ Premium (19%)';
+      mlRows.push(`<tr style="${destaque ? 'background:#fff9e6;font-weight:600' : ''}">
+        <td style="font-size:12px"><span style="color:var(--text3)">${faixaLabel}</span> ${tipoLabel}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#b7791f">${R(preco)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.comissao)}</td>
+        ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(r.ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        ${freteCusto > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(r.frete)} <span style="font-size:10px">(grátis)</span></td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">Pago</td>'}
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${r.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(r.lucro)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${av.cor};font-weight:600">${r.margem.toFixed(1)}%</td>
+        <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
+      </tr>`);
+    });
+  });
+  document.getElementById('sim-ml-tbody').innerHTML = mlRows.join('');
+
+  // ── COMPARATIVO ──
+  // Melhor faixa para cada plataforma (maior margem positiva)
+  const melhorShopee = faixas
+    .map(p => ({preco:p, ...calcShopee(custo, p, impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const melhorMLClass = faixas
+    .map(p => ({preco:p, ...calcML(custo, p, 'classico', impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const melhorMLPrem = faixas
+    .map(p => ({preco:p, ...calcML(custo, p, 'premium', impostoPct, adsPct, freteCusto)}))
+    .filter(r => r.margem > 0)
+    .sort((a,b) => b.margem - a.margem)[0];
+
+  const cardComp = (titulo, icone, cor, r) => r ? `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;border-left:3px solid ${cor}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:20px">${icone}</span>
+        <span style="font-size:13px;font-weight:600;color:${cor}">${titulo}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--text2)">Preço sugerido</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${cor}">${R(r.preco)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--text2)">Lucro por unidade</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--accent2)">${R(r.lucro)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text2)">Margem líquida</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent2)">${r.margem.toFixed(1)}%</span>
+      </div>
+    </div>` : '';
+
+  document.getElementById('sim-comparativo').innerHTML = [
+    melhorShopee  ? cardComp('Shopee (melhor faixa)', '🛍️', '#d4380d', melhorShopee) : '',
+    melhorMLClass ? cardComp('ML Clássico (melhor faixa)', '🔵', '#b7791f', melhorMLClass) : '',
+    melhorMLPrem  ? cardComp('ML Premium (melhor faixa)', '⭐', '#b7791f', melhorMLPrem) : '',
+  ].filter(Boolean).join('');
+}
+
+function limparSimulador() {
+  ['sim-nome','sim-custo','sim-embalagem','sim-outros','sim-imposto','sim-ads','sim-frete','sim-preco-manual'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = id.includes('custo') || id.includes('embalagem') || id.includes('outros') ? '0' : '';
+  });
+  simMargemAlvo = 0;
+  document.querySelectorAll('.btn-margem').forEach(b => {
+    b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
+  });
+  const lbl = document.getElementById('sim-margem-alvo-label');
+  if(lbl) lbl.textContent = 'Mostrando todas as faixas';
+  limparPrecoManual();
+  const frLiq = document.getElementById('sim-frete-liquido');
+  if(frLiq) { frLiq.textContent = 'R$ 0,00'; frLiq.style.color='var(--danger)'; }
+  const frCob = document.getElementById('sim-frete-cobertura');
+  if(frCob) frCob.value = '50';
+  document.getElementById('sim-vazio').style.display = 'block';
+  document.getElementById('sim-resultado').style.display = 'none';
+}
+
+
+// ── CALC FRETE LÍQUIDO (display em tempo real) ───────────────────────────────
+function calcFreteLiquido() {
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  const el = document.getElementById('sim-frete-liquido');
+  if(el) {
+    el.textContent = R(freteLiquido);
+    el.style.color = freteLiquido > 0 ? 'var(--danger)' : 'var(--accent2)';
+    el.style.background = freteLiquido > 0 ? 'var(--danger-light)' : 'var(--accent2-light)';
+    el.style.borderColor = freteLiquido > 0 ? '#f0c4be' : '#b7e4c7';
+  }
+}
+
+// ── SIMULADOR PREÇO MANUAL ────────────────────────────────────────────────────
+function simularPrecoManual() {
+  const preco = parseFloat(document.getElementById('sim-preco-manual')?.value) || 0;
+  const div   = document.getElementById('sim-manual-resultado');
+  if(!div) return;
+
+  if(preco <= 0) { div.style.display = 'none'; return; }
+
+  const custoBase  = parseFloat(document.getElementById('sim-custo')?.value) || 0;
+  const embalagem  = parseFloat(document.getElementById('sim-embalagem')?.value) || 0;
+  const outros     = parseFloat(document.getElementById('sim-outros')?.value) || 0;
+  const impostoPct = parseFloat(document.getElementById('sim-imposto')?.value) || 0;
+  const adsPct     = parseFloat(document.getElementById('sim-ads')?.value) || 0;
+  const freteVal      = parseFloat(document.getElementById('sim-frete')?.value) || 0;
+  const freteCobertura= parseFloat(document.getElementById('sim-frete-cobertura')?.value) || 0;
+  const freteTipo     = document.getElementById('sim-frete-tipo')?.value || 'gratis';
+  const freteLiquido  = freteVal * (1 - freteCobertura / 100);
+  const freteCusto    = freteTipo === 'gratis' ? freteLiquido : 0;
+  const custo      = custoBase + embalagem + outros;
+
+  if(custo <= 0) { div.style.display = 'none'; toast('Preencha o custo do produto primeiro!', true); return; }
+
+  const sh  = calcShopee(custo, preco, impostoPct, adsPct, freteCusto);
+  const mlC = calcML(custo, preco, 'classico', impostoPct, adsPct, freteCusto);
+  const mlP = calcML(custo, preco, 'premium',  impostoPct, adsPct, freteCusto);
+
+  const linha = (label, valor, cor) =>
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--text2)">${label}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-weight:600;color:${cor}">${valor}</span>
+    </div>`;
+
+  const card = (titulo, icone, corTitulo, corBorda, dados) => `
+    <div style="border:1px solid ${corBorda};border-radius:var(--radius);overflow:hidden">
+      <div style="background:${corBorda}18;padding:10px 14px;border-bottom:1px solid ${corBorda};display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">${icone}</span>
+        <span style="font-size:13px;font-weight:700;color:${corTitulo}">${titulo}</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${corTitulo}">${R(preco)}</span>
+      </div>
+      <div style="padding:0 14px 8px">
+        ${dados}
+        <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;background:${dados.includes('Prejuízo')?'var(--danger-light)':'var(--accent2-light)'};margin:8px -14px -8px;padding:8px 14px;border-top:2px solid ${corBorda}">
+          <span style="font-size:13px;font-weight:700">Lucro líquido</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${dados.includes('var(--danger)')&&dados.lastIndexOf('var(--danger)')>dados.lastIndexOf('var(--accent2)')? 'var(--danger)':'var(--accent2)'}">${dados}</span>
+        </div>
+      </div>
+    </div>`;
+
+  const rowsShopee = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão Shopee (20%)', '− ' + R(sh.comissao), 'var(--danger)')}
+    ${linha('− Tarifa fixa', '− ' + R(sh.tarifa), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(sh.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(sh.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const rowsMLClass = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão ML Clássico (16%)', '− ' + R(mlC.comissao), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlC.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlC.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const rowsMLPrem = `
+    ${linha('Preço de venda', R(preco), 'var(--text)')}
+    ${linha('− Comissão ML Premium (19%)', '− ' + R(mlP.comissao), 'var(--danger)')}
+    ${impostoPct > 0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(mlP.imposto), 'var(--danger)') : ''}
+    ${adsPct > 0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(mlP.ads), 'var(--warn)') : ''}
+    ${linha('− Custo total produto', '− ' + R(custo), 'var(--text2)')}`;
+
+  const avSh  = avaliacaoLabel(sh.margem,  simMargemAlvo);
+  const avMlC = avaliacaoLabel(mlC.margem, simMargemAlvo);
+  const avMlP = avaliacaoLabel(mlP.margem, simMargemAlvo);
+
+  document.getElementById('sim-manual-cards').innerHTML = `
+    <!-- Shopee -->
+    <div style="border:1px solid #fca5a5;border-radius:var(--radius);overflow:hidden">
+      <div style="background:#fff5f5;padding:10px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🛍️</span>
+        <span style="font-size:13px;font-weight:700;color:#d4380d">Shopee</span>
+        <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:#d4380d">${R(preco)}</span>
+      </div>
+      <div style="padding:0 14px">
+        ${rowsShopee}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;margin-top:4px;border-top:2px solid #fca5a5">
+          <div>
+            <div style="font-size:13px;font-weight:700">Lucro líquido</div>
+            <div style="font-size:11px;color:${avSh.cor}">${avSh.txt} — Margem: ${sh.margem.toFixed(1)}%</div>
+          </div>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:${sh.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(sh.lucro)}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ML wrapper com 2 sub-cards -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <!-- ML Clássico -->
+      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
+        <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">🔵</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Clássico (16%)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+        </div>
+        <div style="padding:0 14px">
+          ${rowsMLClass}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
+            <div>
+              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
+              <div style="font-size:11px;color:${avMlC.cor}">${avMlC.txt} — ${mlC.margem.toFixed(1)}%</div>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlC.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlC.lucro)}</span>
+          </div>
+        </div>
+      </div>
+      <!-- ML Premium -->
+      <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden">
+        <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">⭐</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">ML Premium (19%)</span>
+          <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:#b7791f">${R(preco)}</span>
+        </div>
+        <div style="padding:0 14px">
+          ${rowsMLPrem}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:2px solid #fde58a">
+            <div>
+              <div style="font-size:12px;font-weight:700">Lucro líquido</div>
+              <div style="font-size:11px;color:${avMlP.cor}">${avMlP.txt} — ${mlP.margem.toFixed(1)}%</div>
+            </div>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:${mlP.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(mlP.lucro)}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  div.style.display = 'block';
+}
+
+function limparPrecoManual() {
+  const inp = document.getElementById('sim-preco-manual');
+  if(inp) inp.value = '';
+  const div = document.getElementById('sim-manual-resultado');
+  if(div) div.style.display = 'none';
+}
+
+
+// ── INTEGRAÇÃO MERCADO LIVRE ──────────────────────────────────────────────────
+const ML_APP_ID    = "1201355025627006";
+const ML_REDIRECT  = "https://viniciussj0.github.io/mosquiteiros-estoque/estoque.html";
+let mlToken        = null;
+let mlUserId       = null;
+let mlUserNick     = null;
+let mlCepOrigem    = null;
+
+// Verifica se voltou do OAuth ML (código na URL)
+async function checkMLCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('code');
+  if(!code) {
+    // Tenta carregar token salvo
+    const saved = localStorage.getItem('ml_token');
+    if(saved) {
+      try {
+        const t = JSON.parse(saved);
+        if(t.expires_at && Date.now() < t.expires_at) {
+          mlToken = t.access_token;
+          await carregarPerfilML();
+          return;
+        }
+      } catch(e) {}
+      localStorage.removeItem('ml_token');
+    }
+    return;
+  }
+  // Trocar code por token via proxy CORS
+  setSyncLabel("Conectando ao ML...");
+  try {
+    // Usa um proxy público para fazer a troca (evita CORS)
+    const resp = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'},
+      body: new URLSearchParams({
+        grant_type:    'authorization_code',
+        client_id:     ML_APP_ID,
+        client_secret: 'euZzNNUy4ZkmDI1acA3fxY47PULTvVuZ',
+        code:          code,
+        redirect_uri:  ML_REDIRECT
+      })
+    });
+    const data = await resp.json();
+    if(data.access_token) {
+      mlToken = data.access_token;
+      const expiresAt = Date.now() + (data.expires_in * 1000);
+      localStorage.setItem('ml_token', JSON.stringify({access_token: mlToken, expires_at: expiresAt}));
+      // Limpar code da URL sem recarregar
+      window.history.replaceState({}, '', window.location.pathname);
+      await carregarPerfilML();
+      toast('✅ Mercado Livre conectado!');
+    } else {
+      toast('⚠️ Erro ao conectar ML: ' + (data.message || 'Tente novamente'), true);
+    }
+  } catch(e) {
+    console.error('ML OAuth error:', e);
+    toast('⚠️ Erro de conexão com ML', true);
+  }
+  setSyncLabel("Sincronizado ✓");
+}
+
+async function carregarPerfilML() {
+  if(!mlToken) return;
+  try {
+    const resp = await fetch('https://api.mercadolibre.com/users/me', {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const user = await resp.json();
+    if(user.id) {
+      mlUserId   = user.id;
+      mlUserNick = user.nickname || user.first_name || 'Conectado';
+      // Pegar CEP de origem do endereço do usuário
+      if(user.address && user.address.zip) {
+        mlCepOrigem = user.address.zip.replace(/\D/g,'');
+      }
+      atualizarStatusML(true);
+    }
+  } catch(e) {
+    console.error('Erro ao carregar perfil ML:', e);
+  }
+}
+
+function atualizarStatusML(conectado) {
+  const desc = document.getElementById('ml-status-desconectado');
+  const con  = document.getElementById('ml-status-conectado');
+  const nome = document.getElementById('ml-user-nome');
+  const pain = document.getElementById('ml-frete-painel');
+  if(conectado) {
+    if(desc) desc.style.display = 'none';
+    if(con)  { con.style.display = 'flex'; }
+    if(nome) nome.textContent = '✅ ' + mlUserNick;
+    if(pain) pain.style.display = 'block';
+  } else {
+    if(desc) desc.style.display = 'flex';
+    if(con)  con.style.display  = 'none';
+    if(pain) pain.style.display = 'none';
+  }
+}
+
+function loginML() {
+  const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${ML_APP_ID}&redirect_uri=${encodeURIComponent(ML_REDIRECT)}`;
+  window.location.href = authUrl;
+}
+
+function logoutML() {
+  mlToken = null; mlUserId = null; mlUserNick = null;
+  localStorage.removeItem('ml_token');
+  atualizarStatusML(false);
+  document.getElementById('ml-frete-resultado').textContent = 'Digite o CEP de destino acima para calcular o frete';
+  toast('Desconectado do Mercado Livre');
+}
+
+async function buscarFreteML() {
+  const cepDest = (document.getElementById('sim-cep-destino')?.value || '').replace(/\D/g,'');
+  const painel  = document.getElementById('ml-frete-painel');
+  const result  = document.getElementById('ml-frete-resultado');
+
+  if(!mlToken) return;
+  if(painel) painel.style.display = 'block';
+  if(cepDest.length < 8) {
+    if(result) result.innerHTML = '<span style="color:var(--text3)">Digite um CEP completo (8 dígitos)</span>';
+    return;
+  }
+
+  if(result) result.innerHTML = '<span style="color:var(--text3)">🔄 Calculando frete...</span>';
+
+  try {
+    // Buscar anúncios do vendedor para pegar um item_id de referência
+    const itemsResp = await fetch(`https://api.mercadolibre.com/users/${mlUserId}/items/search?limit=1`, {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const itemsData = await itemsResp.json();
+    const itemId = itemsData.results?.[0];
+
+    if(!itemId) {
+      if(result) result.innerHTML = '<span style="color:var(--warn)">⚠️ Nenhum anúncio encontrado na sua conta ML para calcular o frete</span>';
+      return;
+    }
+
+    // Calcular frete para o item + CEP destino
+    const freteResp = await fetch(`https://api.mercadolibre.com/items/${itemId}/shipping_options?zip_code=${cepDest}`, {
+      headers: {'Authorization': 'Bearer ' + mlToken}
+    });
+    const freteData = await freteResp.json();
+
+    if(freteData.options && freteData.options.length > 0) {
+      const opcoes = freteData.options.slice(0, 4);
+      const rows = opcoes.map(op => {
+        const custo = op.list_cost || op.cost || 0;
+        const desc  = op.name || op.shipping_method_type || 'Envio';
+        const dias  = op.estimated_delivery_time?.date ? 
+          `${new Date(op.estimated_delivery_time.date).toLocaleDateString('pt-BR')}` : 
+          (op.estimated_schedule_limit?.date ? new Date(op.estimated_schedule_limit.date).toLocaleDateString('pt-BR') : '—');
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #fde58a;font-size:12px">
+          <span style="color:#b7791f;font-weight:500">📦 ${desc}</span>
+          <span style="color:var(--text3);font-size:11px">Prev: ${dias}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:${custo===0?'var(--accent2)':'var(--danger)'}">
+            ${custo === 0 ? 'Grátis' : R(custo)}
+          </span>
+        </div>`;
+      }).join('');
+
+      if(result) result.innerHTML = `
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">CEP destino: ${cepDest} · Baseado no seu anúncio</div>
+        ${rows}
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">* O ML pode cobrir 50% do frete pela sua reputação</div>`;
+    } else {
+      if(result) result.innerHTML = '<span style="color:var(--warn)">⚠️ Não foi possível calcular o frete para esse CEP</span>';
+    }
+  } catch(e) {
+    console.error('Erro frete ML:', e);
+    if(result) result.innerHTML = '<span style="color:var(--danger)">⚠️ Erro ao buscar frete. Tente novamente.</span>';
+  }
+}
+
 // ── IMPORTADOR SHOPEE ─────────────────────────────────────────────────────────
 let shopeeData = [];
 
@@ -2239,6 +2984,7 @@ async function init() {
   renderAll();
   renderTelegram();
   checkBot();
+  checkMLCallback();
   setInterval(async()=>{ await lerDados(); renderAll(); }, 30000);
   setInterval(checkBot, 30000);
 }
