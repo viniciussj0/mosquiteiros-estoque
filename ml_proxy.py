@@ -248,6 +248,131 @@ def ml_buscar(user_id):
                     })
     return jsonify({"items": items})
 
+
+# Calcula tarifa + frete (grátis e pago) para um item + preço específico (usado nas faixas)
+@app.route("/ml/faixa/<item_id>", methods=["GET", "OPTIONS"])
+def ml_faixa(item_id):
+    if request.method == "OPTIONS":
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    preco = float(request.args.get("preco", 0))
+    listing_type = request.args.get("listing_type", "gold_special")
+
+    # Buscar dados do item (categoria + seller)
+    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
+                          headers={"Authorization": f"Bearer {token}"})
+    item_data = r_item.json()
+    category_id = item_data.get("category_id", "")
+    seller_id = item_data.get("seller_id")
+
+    # Tarifa real da categoria para esse preço
+    taxa = get_taxa_categoria(token, category_id, preco, listing_type)
+    if not taxa:
+        pct = 0.135 if listing_type == "gold_special" else 0.165
+        taxa = {"fee_amount": preco * pct, "percentage": pct*100, "fixed_fee": 0}
+
+    # Frete grátis (você paga) e pago (comprador)
+    def get_frete(free_bool):
+        try:
+            params = {
+                "item_id": item_id, "item_price": preco,
+                "listing_type_id": listing_type, "verbose": "true",
+                "free_shipping": "true" if free_bool else "false"
+            }
+            r = requests.get(
+                f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free",
+                params=params, headers={"Authorization": f"Bearer {token}"})
+            cov = r.json().get("coverage", {}).get("all_country", {})
+            if cov:
+                custo = cov.get("list_cost", 0)
+                disc = cov.get("discount", {})
+                cheio = disc.get("promoted_amount", custo) if disc else custo
+                return {"cheio": cheio, "valor": custo}
+        except Exception as e:
+            print("frete faixa erro:", e)
+        return {"cheio": 0, "valor": 0}
+
+    return jsonify({
+        "preco": preco,
+        "tarifa": taxa.get("fee_amount", 0),
+        "tarifa_pct": taxa.get("percentage", 0),
+        "frete_gratis": get_frete(True),
+        "frete_pago": get_frete(False)
+    })
+
+
+# Prediz categoria pelo nome do produto e retorna tarifas (sem precisar de anúncio)
+@app.route("/ml/categoria", methods=["GET", "OPTIONS"])
+def ml_categoria():
+    if request.method == "OPTIONS":
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    nome = request.args.get("nome", "").strip()
+    if not nome:
+        return jsonify({"error": "nome obrigatorio"}), 400
+
+    # Predizer categoria pelo nome (category predictor do ML)
+    try:
+        r = requests.get(
+            f"https://api.mercadolibre.com/sites/MLB/domain_discovery/search?q={nome}&limit=1",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        pred = r.json()
+        if isinstance(pred, list) and len(pred) > 0:
+            category_id = pred[0].get("category_id", "")
+            category_name = pred[0].get("category_name", "")
+        else:
+            return jsonify({"error": "categoria nao encontrada"}), 404
+    except Exception as e:
+        print("predictor erro:", e)
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({
+        "category_id": category_id,
+        "category_name": category_name
+    })
+
+# Calcula tarifa + frete por preço usando CATEGORIA (sem item_id)
+@app.route("/ml/faixa_cat", methods=["GET", "OPTIONS"])
+def ml_faixa_cat():
+    if request.method == "OPTIONS":
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    preco = float(request.args.get("preco", 0))
+    category_id = request.args.get("category_id", "")
+    listing_type = request.args.get("listing_type", "gold_special")
+
+    # Tarifa real da categoria
+    taxa = get_taxa_categoria(token, category_id, preco, listing_type)
+    if not taxa:
+        pct = 0.135 if listing_type == "gold_special" else 0.165
+        taxa = {"fee_amount": preco * pct, "percentage": pct*100, "fixed_fee": 0}
+
+    # Frete por categoria — usa o endpoint de shipping costs por categoria/preço
+    # O ML calcula frete grátis com base no preço e dimensões médias da categoria
+    frete_gratis_valor = 0
+    frete_pago_valor = 0
+    try:
+        # shipping_options com base na categoria e preço
+        r = requests.get(
+            f"https://api.mercadolibre.com/sites/MLB/shipping_options/free?category_id={category_id}&price={preco}&listing_type_id={listing_type}",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        fr = r.json()
+        cov = fr.get("coverage", {}).get("all_country", {})
+        if cov:
+            frete_gratis_valor = cov.get("list_cost", 0)
+    except Exception as e:
+        print("frete cat erro:", e)
+
+    return jsonify({
+        "preco": preco,
+        "tarifa": taxa.get("fee_amount", 0),
+        "tarifa_pct": taxa.get("percentage", 0),
+        "frete_gratis": frete_gratis_valor,
+        "frete_pago": frete_pago_valor
+    })
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     app.run(host="0.0.0.0", port=port)
