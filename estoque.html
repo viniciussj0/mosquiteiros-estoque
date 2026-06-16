@@ -520,7 +520,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           <span style="font-size:18px">🛒</span>
           <div>
             <div style="font-size:13px;font-weight:700;color:#b7791f">Mercado Livre</div>
-            <div style="font-size:11px;color:var(--text3)">Clássico: 16% | Premium: 19% (frete grátis acima de R$79)</div>
+            <div style="font-size:11px;color:var(--text3)">Tarifa real por categoria do produto · Frete real do ML (grátis = você paga / pago = cliente)</div>
           </div>
         </div>
         <div style="overflow-x:auto">
@@ -531,10 +531,11 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
               <th style="text-align:right">Comissão</th>
               <th style="text-align:right" id="ml-col-imposto">Imposto</th>
               <th style="text-align:right">ADS</th>
-              <th style="text-align:right">Frete</th>
-              <th style="text-align:right">Custo Total</th>
-              <th style="text-align:right">Lucro</th>
-              <th style="text-align:right">Margem</th>
+              <th style="text-align:right">Frete Grátis<br><span style="font-size:9px;font-weight:400">(você paga)</span></th>
+              <th style="text-align:right">Frete Pago<br><span style="font-size:9px;font-weight:400">(cliente)</span></th>
+              <th style="text-align:right">Custo</th>
+              <th style="text-align:right">Lucro F.Grátis</th>
+              <th style="text-align:right">Lucro F.Pago</th>
               <th style="text-align:center">Avaliação</th>
             </tr></thead>
             <tbody id="sim-ml-tbody"></tbody>
@@ -2371,30 +2372,16 @@ function simularPrecos() {
   });
   document.getElementById('sim-shopee-tbody').innerHTML = shopeeRows.join('');
 
-  // ── MERCADO LIVRE ──
-  const mlRows = [];
-  faixas.forEach((preco, idx) => {
-    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
-    ['classico','premium'].forEach(tipo => {
-      const r = calcML(custo, preco, tipo, impostoPct, adsPct, freteCusto);
-      const av = avaliacaoLabel(r.margem, simMargemAlvo);
-      const destaque = simMargemAlvo > 0 && r.margem >= simMargemAlvo;
-      const tipoLabel = tipo === 'classico' ? '🔵 Clássico (16%)' : '⭐ Premium (19%)';
-      mlRows.push(`<tr style="${destaque ? 'background:#fff9e6;font-weight:600' : ''}">
-        <td style="font-size:12px"><span style="color:var(--text3)">${faixaLabel}</span> ${tipoLabel}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#b7791f">${R(preco)}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.comissao)}</td>
-        ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(r.imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
-        ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(r.ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
-        ${freteCusto > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(r.frete)} <span style="font-size:10px">(grátis)</span></td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">Pago</td>'}
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${r.lucro>=0?'var(--accent2)':'var(--danger)'}">${R(r.lucro)}</td>
-        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:${av.cor};font-weight:600">${r.margem.toFixed(1)}%</td>
-        <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
-      </tr>`);
-    });
-  });
-  document.getElementById('sim-ml-tbody').innerHTML = mlRows.join('');
+  // ── MERCADO LIVRE (auto-detecta anúncio pelo nome do produto) ──
+  const nomeProd = (document.getElementById('sim-nome')?.value || '').trim();
+  if(mlToken && nomeProd.length >= 3) {
+    document.getElementById('sim-ml-tbody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--text3)">🔄 Buscando produto "${nomeProd}" e calculando tarifas reais...</td></tr>`;
+    autoCalcularFaixasML(faixas, custo, impostoPct, adsPct, nomeProd);
+  } else if(!mlToken) {
+    document.getElementById('sim-ml-tbody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--text3)">🔌 Conecte ao Mercado Livre para ver tarifas e fretes reais</td></tr>`;
+  } else {
+    document.getElementById('sim-ml-tbody').innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--text3)">✏️ Digite o nome do produto (ex: "mosquiteiro") para calcular as tarifas reais</td></tr>`;
+  }
 
   // ── COMPARATIVO ──
   // Melhor faixa para cada plataforma (maior margem positiva)
@@ -2438,6 +2425,100 @@ function simularPrecos() {
     melhorMLClass ? cardComp('ML Clássico (melhor faixa)', '🔵', '#b7791f', melhorMLClass) : '',
     melhorMLPrem  ? cardComp('ML Premium (melhor faixa)', '⭐', '#b7791f', melhorMLPrem) : '',
   ].filter(Boolean).join('');
+}
+
+let _autoCalcCache = {};  // cache nome→itemId
+let _autoCalcTimer = null;
+
+async function autoCalcularFaixasML(faixas, custo, impostoPct, adsPct, nomeProd) {
+  // Debounce para não buscar a cada tecla
+  clearTimeout(_autoCalcTimer);
+  _autoCalcTimer = setTimeout(async () => {
+    const tbody = document.getElementById('sim-ml-tbody');
+    let itemId = _autoCalcCache[nomeProd.toLowerCase()];
+
+    // Se não tem no cache, busca o anúncio pelo nome
+    if(!itemId) {
+      try {
+        const resp = await fetch(`${ML_PROXY}/ml/buscar/${mlUserId}?q=${encodeURIComponent(nomeProd)}`, {
+          headers: {'Authorization': 'Bearer ' + mlToken}
+        });
+        const data = await resp.json();
+        const items = data.items || [];
+        if(items.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--warn)">⚠️ Nenhum anúncio seu encontrado com "${nomeProd}". Tente outro nome ou termo mais específico.</td></tr>`;
+          return;
+        }
+        itemId = items[0].id;
+        _autoCalcCache[nomeProd.toLowerCase()] = itemId;
+        // Mostra qual produto foi usado como base
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:12px;color:var(--text3);font-size:12px">📦 Base: <strong>${items[0].title.substring(0,50)}</strong> · 🔄 Calculando ${faixas.length} faixas...</td></tr>`;
+      } catch(e) {
+        console.error('auto busca erro:', e);
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:16px;color:var(--danger)">⚠️ Erro ao buscar produto</td></tr>`;
+        return;
+      }
+    }
+
+    // Agora calcula as faixas usando esse itemId
+    calcularFaixasML(faixas, custo, impostoPct, adsPct, itemId);
+  }, 600);
+}
+
+async function calcularFaixasML(faixas, custo, impostoPct, adsPct, itemId) {
+  const tbody = document.getElementById('sim-ml-tbody');
+  const rows = [];
+
+  // Para cada faixa, busca tarifa + frete real (clássico e premium)
+  for(let idx = 0; idx < faixas.length; idx++) {
+    const preco = faixas[idx];
+    const faixaLabel = idx === 0 ? 'Entrada' : idx === faixas.length-1 ? 'Máximo' : idx === Math.floor(faixas.length/2) ? 'Médio' : `Faixa ${idx+1}`;
+
+    for(const [tipo, ltId, icone] of [['classico','gold_special','🔵'], ['premium','gold_pro','⭐']]) {
+      let tarifa = 0, tarifaPct = 0, freteGratis = 0, fretePago = 0;
+      try {
+        const resp = await fetch(`${ML_PROXY}/ml/faixa/${itemId}?preco=${preco}&listing_type=${ltId}`, {
+          headers: {'Authorization': 'Bearer ' + mlToken}
+        });
+        const d = await resp.json();
+        tarifa = d.tarifa || 0;
+        tarifaPct = d.tarifa_pct || 0;
+        freteGratis = d.frete_gratis?.valor || 0;  // você paga (frete grátis)
+        fretePago = d.frete_pago?.valor || 0;       // cliente paga
+      } catch(e) { console.error('faixa erro:', e); }
+
+      const imposto = preco * (impostoPct/100);
+      const ads = preco * (adsPct/100);
+
+      // Lucro com frete grátis (você paga o frete)
+      const lucroGratis = preco - tarifa - imposto - ads - freteGratis - custo;
+      const margemGratis = preco > 0 ? (lucroGratis/preco*100) : 0;
+      // Lucro com frete pago pelo cliente (não sai do seu bolso)
+      const lucroPago = preco - tarifa - imposto - ads - custo;
+      const margemPago = preco > 0 ? (lucroPago/preco*100) : 0;
+
+      const av = avaliacaoLabel(margemPago, simMargemAlvo);
+      const destaque = simMargemAlvo > 0 && margemPago >= simMargemAlvo;
+      const tipoLabel = `${icone} ${tipo==='classico'?'Clássico':'Premium'} (${tarifaPct.toFixed(1).replace('.',',')}%)`;
+
+      rows.push(`<tr style="${destaque ? 'background:#fff9e6;font-weight:600' : ''}">
+        <td style="font-size:12px"><span style="color:var(--text3)">${faixaLabel}</span><br>${tipoLabel}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;color:#b7791f">${R(preco)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(tarifa)}</td>
+        ${impostoPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(imposto)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        ${adsPct > 0 ? `<td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(ads)}</td>` : '<td style="text-align:right;color:var(--text3);font-size:11px">—</td>'}
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--info)">− ${R(freteGratis)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text3)">${R(fretePago)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text2)">${R(custo)}</td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:600;color:${lucroGratis>=0?'var(--accent2)':'var(--danger)'}">${R(lucroGratis)}<br><span style="font-size:10px">${margemGratis.toFixed(1)}%</span></td>
+        <td style="text-align:right;font-family:'JetBrains Mono',monospace;font-weight:600;color:${lucroPago>=0?'var(--accent2)':'var(--danger)'}">${R(lucroPago)}<br><span style="font-size:10px">${margemPago.toFixed(1)}%</span></td>
+        <td style="text-align:center;font-size:12px;color:${av.cor}">${av.txt}</td>
+      </tr>`);
+    }
+    // Atualiza progressivamente
+    tbody.innerHTML = rows.join('') + (idx < faixas.length-1 ? `<tr><td colspan="11" style="text-align:center;padding:8px;color:var(--text3);font-size:11px">🔄 Carregando faixa ${idx+2}/${faixas.length}...</td></tr>` : '');
+  }
+  tbody.innerHTML = rows.join('');
 }
 
 function limparSimulador() {
