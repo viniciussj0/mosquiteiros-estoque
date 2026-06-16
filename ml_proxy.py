@@ -272,6 +272,7 @@ def ml_faixa(item_id):
         taxa = {"fee_amount": preco * pct, "percentage": pct*100, "fixed_fee": 0}
 
     # Frete grátis (você paga) e pago (comprador)
+    # ML retorna: list_cost = valor cheio; cost = o que o vendedor realmente paga (após cobertura)
     def get_frete(free_bool):
         try:
             params = {
@@ -284,10 +285,15 @@ def ml_faixa(item_id):
                 params=params, headers={"Authorization": f"Bearer {token}"})
             cov = r.json().get("coverage", {}).get("all_country", {})
             if cov:
-                custo = cov.get("list_cost", 0)
-                disc = cov.get("discount", {})
-                cheio = disc.get("promoted_amount", custo) if disc else custo
-                return {"cheio": cheio, "valor": custo}
+                cheio = cov.get("list_cost", 0)   # valor cheio do frete
+                pago = cov.get("cost", 0)          # o que o vendedor paga (já com cobertura)
+                # Se cost vier 0 mas tem desconto, calcular pelo discount
+                if pago == 0 and cheio > 0:
+                    disc = cov.get("discount", {})
+                    rate = disc.get("rate", 0) if disc else 0
+                    if rate > 0:
+                        pago = cheio * (1 - rate)
+                return {"cheio": cheio, "valor": pago}
         except Exception as e:
             print("frete faixa erro:", e)
         return {"cheio": 0, "valor": 0}
@@ -372,6 +378,24 @@ def ml_faixa_cat():
         "frete_gratis": frete_gratis_valor,
         "frete_pago": frete_pago_valor
     })
+
+
+# DEBUG: retorna JSON cru do frete para inspecionar estrutura
+@app.route("/ml/debug_frete/<item_id>", methods=["GET", "OPTIONS"])
+def ml_debug_frete(item_id):
+    if request.method == "OPTIONS":
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    preco = float(request.args.get("preco", 65.90))
+    lt = request.args.get("listing_type", "gold_pro")
+    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
+                          headers={"Authorization": f"Bearer {token}"})
+    seller_id = r_item.json().get("seller_id")
+    params = {"item_id": item_id, "item_price": preco, "listing_type_id": lt,
+              "verbose": "true", "free_shipping": "true"}
+    r = requests.get(f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free",
+                     params=params, headers={"Authorization": f"Bearer {token}"})
+    return jsonify(r.json())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
