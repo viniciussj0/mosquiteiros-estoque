@@ -2557,11 +2557,11 @@ function calcFreteLiquido() {
 }
 
 // ── SIMULADOR PREÇO MANUAL ────────────────────────────────────────────────────
+let _manualTimer = null;
 function simularPrecoManual() {
   const preco = parseFloat(document.getElementById('sim-preco-manual')?.value) || 0;
   const div   = document.getElementById('sim-manual-resultado');
   if(!div) return;
-
   if(preco <= 0) { div.style.display = 'none'; return; }
 
   const custoBase  = parseFloat(document.getElementById('sim-custo')?.value) || 0;
@@ -2573,31 +2573,62 @@ function simularPrecoManual() {
 
   if(custo <= 0) { div.style.display = 'none'; toast('Preencha o custo do produto primeiro!', true); return; }
 
-  // Comissão REAL do ML (se anúncio selecionado) ou % padrão
-  let pctClassico = 0.16, pctPremium = 0.19;
-  let freteCheio = 0;        // custo cheio do frete grátis
-  let freteVendedorML = 0;   // o que vendedor paga (frete grátis, já com desconto)
-  if(mlCustosData && mlCustosData.taxas) {
-    const tc = mlCustosData.taxas.classico, tp = mlCustosData.taxas.premium;
-    if(tc && tc.percentage) pctClassico = tc.percentage / 100;
-    if(tp && tp.percentage) pctPremium = tp.percentage / 100;
-    const fg = mlCustosData.frete_gratis || {cheio:0, vendedor:0};
-    freteCheio = fg.cheio || 0;
-    freteVendedorML = fg.vendedor || 0;
+  div.style.display = 'block';
+  const cardsDiv = document.getElementById('sim-manual-cards');
+
+  const nomeProd = (document.getElementById('sim-nome')?.value || '').trim();
+
+  // Se conectado ao ML e tem nome, busca dados REAIS por preço
+  if(mlToken && nomeProd.length >= 3) {
+    cardsDiv.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3)">🔄 Buscando comissão e frete reais do ML...</div>';
+    clearTimeout(_manualTimer);
+    _manualTimer = setTimeout(() => calcularManualReal(preco, custo, impostoPct, adsPct, nomeProd), 500);
+  } else {
+    // Sem ML: usa comissão fixa (fallback)
+    renderManualCards(preco, custo, impostoPct, adsPct, null);
+  }
+}
+
+async function calcularManualReal(preco, custo, impostoPct, adsPct, nomeProd) {
+  let itemId = _autoCalcCache[nomeProd.toLowerCase()];
+  if(!itemId) {
+    try {
+      const resp = await fetch(`${ML_PROXY}/ml/buscar/${mlUserId}?q=${encodeURIComponent(nomeProd)}`, {
+        headers: {'Authorization': 'Bearer ' + mlToken}
+      });
+      const items = (await resp.json()).items || [];
+      if(items.length === 0) {
+        renderManualCards(preco, custo, impostoPct, adsPct, null);
+        return;
+      }
+      itemId = items[0].id;
+      _autoCalcCache[nomeProd.toLowerCase()] = itemId;
+    } catch(e) { renderManualCards(preco, custo, impostoPct, adsPct, null); return; }
   }
 
+  // Buscar tarifa + frete real das 2 modalidades
+  const dados = {};
+  for(const [tipo, ltId] of [['classico','gold_special'],['premium','gold_pro']]) {
+    try {
+      const r = await fetch(`${ML_PROXY}/ml/faixa/${itemId}?preco=${preco}&listing_type=${ltId}`, {
+        headers: {'Authorization': 'Bearer ' + mlToken}
+      });
+      const d = await r.json();
+      dados[tipo] = {
+        tarifa: d.tarifa || 0,
+        tarifaPct: d.tarifa_pct || 0,
+        freteGratis: d.frete_gratis?.valor || 0,
+        fretePago: d.frete_pago?.valor || 0
+      };
+    } catch(e) { dados[tipo] = null; }
+  }
+  renderManualCards(preco, custo, impostoPct, adsPct, dados);
+}
+
+function renderManualCards(preco, custo, impostoPct, adsPct, dadosReais) {
+  const cardsDiv = document.getElementById('sim-manual-cards');
   const imposto = preco * (impostoPct/100);
   const ads     = preco * (adsPct/100);
-  const freteGratis  = freteVendedorML;    // o que você paga (real ML)
-  const freteClientePaga = 0;              // cliente paga, não afeta lucro
-
-  // Calcula lucro para um tipo de comissão + modalidade de frete
-  function calc(pct, frete) {
-    const comissao = preco * pct;
-    const lucro = preco - comissao - imposto - ads - frete - custo;
-    const margem = preco > 0 ? (lucro/preco*100) : 0;
-    return { comissao, lucro, margem };
-  }
 
   const linha = (label, valor, cor) =>
     `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
@@ -2618,56 +2649,60 @@ function simularPrecoManual() {
     return {txt:'❌ Prejuízo', cor:'var(--danger)'};
   }
 
-  // Monta um card para um tipo (Clássico/Premium) com 2 sub-resultados de frete
-  function cardML(titulo, icone, pct) {
-    const cg = calc(pct, freteGratis);       // frete grátis (você paga 50%)
-    const cc = calc(pct, freteClientePaga);  // cliente paga
-    const avg = avalia(cg.margem), avc = avalia(cc.margem);
-    const temFrete = freteCheio > 0;
+  function cardML(titulo, icone, tipo, pctFallback) {
+    const real = dadosReais ? dadosReais[tipo] : null;
+    const comissao = real ? real.tarifa : preco * pctFallback;
+    const pct = real ? real.tarifaPct : pctFallback*100;
+    const freteGratis = real ? real.freteGratis : 0;
+    const fretePago = real ? real.fretePago : 0;
+
+    const lucroG = preco - comissao - imposto - ads - freteGratis - custo;
+    const margemG = preco>0?(lucroG/preco*100):0;
+    const lucroP = preco - comissao - imposto - ads - custo;  // cliente paga frete = não desconta
+    const margemP = preco>0?(lucroP/preco*100):0;
+    const avg = avalia(margemG), avp = avalia(margemP);
+
     return `
       <div style="border:1px solid #fde58a;border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
         <div style="background:#fff9e6;padding:10px 14px;border-bottom:1px solid #fde58a;display:flex;align-items:center;gap:8px">
           <span style="font-size:15px">${icone}</span>
-          <span style="font-size:13px;font-weight:700;color:#b7791f">${titulo} (${(pct*100).toFixed(1).replace('.',',')}%)</span>
+          <span style="font-size:13px;font-weight:700;color:#b7791f">${titulo} (${pct.toFixed(1).replace('.',',')}%)</span>
           <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:#b7791f">${R(preco)}</span>
         </div>
         <div style="padding:0 14px">
           ${linha('Preço de venda', R(preco), 'var(--text)')}
-          ${linha('− Comissão (' + (pct*100).toFixed(1).replace('.',',') + '%)', '− ' + R(cg.comissao), 'var(--danger)')}
+          ${linha('− Comissão (' + pct.toFixed(1).replace('.',',') + '%)', '− ' + R(comissao), 'var(--danger)')}
           ${impostoPct>0 ? linha('− Imposto (' + impostoPct + '%)', '− ' + R(imposto), 'var(--danger)') : ''}
           ${adsPct>0 ? linha('− ADS (' + adsPct + '%)', '− ' + R(ads), 'var(--warn)') : ''}
           ${linha('− Custo do produto', '− ' + R(custo), 'var(--text2)')}
         </div>
-        <!-- Dois cenários de frete -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#fde58a;margin-top:6px">
           <div style="background:#fff;padding:10px 14px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${temFrete?'(você paga '+R(freteGratis)+')':''}</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${freteGratis>0?'(você paga '+R(freteGratis)+')':''}</div>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:11px;color:${avg.cor}">${avg.txt} ${cg.margem.toFixed(1)}%</span>
-              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${cg.lucro>=0?'#00a650':'var(--danger)'}">${R(cg.lucro)}</span>
+              <span style="font-size:11px;color:${avg.cor}">${avg.txt} ${margemG.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroG>=0?'#00a650':'var(--danger)'}">${R(lucroG)}</span>
             </div>
           </div>
           <div style="background:#fff;padding:10px 14px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📦 Cliente paga o frete</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📦 Cliente paga ${fretePago>0?'('+R(fretePago)+')':''}</div>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:11px;color:${avc.cor}">${avc.txt} ${cc.margem.toFixed(1)}%</span>
-              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${cc.lucro>=0?'#00a650':'var(--danger)'}">${R(cc.lucro)}</span>
+              <span style="font-size:11px;color:${avp.cor}">${avp.txt} ${margemP.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroP>=0?'#00a650':'var(--danger)'}">${R(lucroP)}</span>
             </div>
           </div>
         </div>
       </div>`;
   }
 
-  // Card Shopee (mantém simples, comissão 20% + tarifa fixa)
-  const shFrete = freteVendedorML;
   function cardShopee() {
     const comissao = preco * 0.20;
     const tarifa = tarifaShopee(preco);
-    const lucroG = preco - comissao - tarifa - imposto - ads - shFrete - custo;
-    const lucroC = preco - comissao - tarifa - imposto - ads - custo;
-    const mG = preco>0?(lucroG/preco*100):0, mC = preco>0?(lucroC/preco*100):0;
-    const avg = avalia(mG), avc = avalia(mC);
-    const temFrete = freteCheio > 0;
+    const freteG = dadosReais ? (dadosReais.classico?.freteGratis || 0) : 0;
+    const lucroG = preco - comissao - tarifa - imposto - ads - freteG - custo;
+    const lucroP = preco - comissao - tarifa - imposto - ads - custo;
+    const mG = preco>0?(lucroG/preco*100):0, mP = preco>0?(lucroP/preco*100):0;
+    const avg = avalia(mG), avp = avalia(mP);
     return `
       <div style="border:1px solid #fca5a5;border-radius:var(--radius);overflow:hidden;margin-bottom:10px">
         <div style="background:#fff5f5;padding:10px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px">
@@ -2685,7 +2720,7 @@ function simularPrecoManual() {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#fca5a5;margin-top:6px">
           <div style="background:#fff;padding:10px 14px">
-            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${temFrete?'(você paga '+R(shFrete)+')':''}</div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">🚚 Frete grátis ${freteG>0?'(você paga '+R(freteG)+')':''}</div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span style="font-size:11px;color:${avg.cor}">${avg.txt} ${mG.toFixed(1)}%</span>
               <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroG>=0?'#00a650':'var(--danger)'}">${R(lucroG)}</span>
@@ -2694,24 +2729,21 @@ function simularPrecoManual() {
           <div style="background:#fff;padding:10px 14px">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">📦 Cliente paga o frete</div>
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:11px;color:${avc.cor}">${avc.txt} ${mC.toFixed(1)}%</span>
-              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroC>=0?'#00a650':'var(--danger)'}">${R(lucroC)}</span>
+              <span style="font-size:11px;color:${avp.cor}">${avp.txt} ${mP.toFixed(1)}%</span>
+              <span style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:${lucroP>=0?'#00a650':'var(--danger)'}">${R(lucroP)}</span>
             </div>
           </div>
         </div>
       </div>`;
   }
 
-  const aviso = (!mlCustosData) ?
-    `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:var(--radius-sm)">💡 Conecte ao ML e selecione um anúncio para usar a comissão real da categoria e o frete real. Sem isso, usa-se 16%/19% e frete R$ 0.</div>` : '';
+  const aviso = (!dadosReais) ?
+    `<div style="font-size:11px;color:var(--text3);margin-bottom:10px;padding:8px;background:var(--surface2);border-radius:var(--radius-sm)">💡 Conecte ao ML e digite o nome do produto para usar comissão e frete reais. Sem isso, usa 16%/19% e frete R$ 0.</div>` : '';
 
-  document.getElementById('sim-manual-cards').innerHTML =
-    aviso +
-    cardML('🔵 ML Clássico', '🔵', pctClassico) +
-    cardML('⭐ ML Premium', '⭐', pctPremium) +
+  cardsDiv.innerHTML = aviso +
+    cardML('🔵 ML Clássico', '🔵', 'classico', 0.16) +
+    cardML('⭐ ML Premium', '⭐', 'premium', 0.19) +
     cardShopee();
-
-  div.style.display = 'block';
 }
 
 function limparPrecoManual() {
