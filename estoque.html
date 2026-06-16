@@ -2809,7 +2809,10 @@ function renderCustosML() {
   // Quando oferece grátis: você paga fg.vendedor (custo cheio fg.cheio)
   // Quando comprador paga: você não paga nada (mas mostramos fp pra referência)
   const freteCheio = freteGratisSel === 'sim' ? fg.cheio : fp.cheio;
-  const freteVendedor = freteGratisSel === 'sim' ? fg.vendedor : 0;
+  // ML inclui o frete nos custos estimados nos DOIS casos:
+  // - frete grátis: você paga fg.vendedor
+  // - comprador paga: o ML ainda desconta fp.comprador dos custos (aparece no "Você recebe")
+  const freteVendedor = freteGratisSel === 'sim' ? fg.vendedor : fp.comprador;
 
   const totalCustos = comissaoVal + freteVendedor;
   const vocePrecebe = precoProd - totalCustos;
