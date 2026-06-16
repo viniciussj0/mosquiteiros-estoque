@@ -2862,6 +2862,7 @@ async function buscarFreteML() {
       headers: {'Authorization': 'Bearer ' + mlToken}
     });
     mlCustosData = await resp.json();
+    console.log('🔍 DEBUG FRETE ML (mande print disso):', JSON.stringify(mlCustosData, null, 2));
     renderCustosML();
   } catch(e) {
     console.error('Erro custos ML:', e);
