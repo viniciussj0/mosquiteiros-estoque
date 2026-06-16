@@ -2481,7 +2481,6 @@ async function calcularFaixasML(faixas, custo, impostoPct, adsPct, itemId) {
           headers: {'Authorization': 'Bearer ' + mlToken}
         });
         const d = await resp.json();
-        if(idx === 0 && tipo === 'premium') console.log('🔍 DEBUG FAIXA (print isso):', JSON.stringify(d, null, 2));
         tarifa = d.tarifa || 0;
         tarifaPct = d.tarifa_pct || 0;
         freteGratis = d.frete_gratis?.valor || 0;  // você paga (frete grátis)
