@@ -194,7 +194,9 @@ def ml_custos(item_id):
         "frete_pago": {
             "cheio":     frete_pago_cheio,
             "comprador": frete_pago_comprador
-        }
+        },
+        "_raw_gratis": cov_g,
+        "_raw_pago": cov_p
     })
 
 
