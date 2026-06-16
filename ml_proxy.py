@@ -20,6 +20,15 @@ def cors_headers(resp):
 def after(resp):
     return cors_headers(resp)
 
+# Handler de erro global — garante CORS mesmo em erro 500
+@app.errorhandler(Exception)
+def handle_error(e):
+    import traceback
+    traceback.print_exc()
+    resp = jsonify({"error": str(e)})
+    resp.status_code = 500
+    return cors_headers(resp)
+
 # Troca o code OAuth pelo access_token
 @app.route("/ml/token", methods=["POST", "OPTIONS"])
 def ml_token():
@@ -255,7 +264,48 @@ def ml_buscar(user_id):
 @app.route("/ml/faixa/<item_id>", methods=["GET", "OPTIONS"])
 def ml_faixa(item_id):
     if request.method == "OPTIONS":
-            fg = get_frete(True)
+        return jsonify({})
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    preco = float(request.args.get("preco", 0))
+    listing_type = request.args.get("listing_type", "gold_special")
+
+    # Buscar dados do item (categoria + seller)
+    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
+                          headers={"Authorization": f"Bearer {token}"})
+    item_data = r_item.json()
+    category_id = item_data.get("category_id", "")
+    seller_id = item_data.get("seller_id")
+
+    # Tarifa real da categoria para esse preço
+    taxa = get_taxa_categoria(token, category_id, preco, listing_type)
+    if not taxa:
+        pct = 0.135 if listing_type == "gold_special" else 0.165
+        taxa = {"fee_amount": preco * pct, "percentage": pct*100, "fixed_fee": 0}
+
+    # Frete grátis (você paga) e pago (comprador)
+    def get_frete(free_bool):
+        try:
+            params = {
+                "item_id": item_id, "item_price": preco,
+                "listing_type_id": listing_type, "verbose": "true",
+                "free_shipping": "true" if free_bool else "false"
+            }
+            r = requests.get(
+                f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free",
+                params=params, headers={"Authorization": f"Bearer {token}"})
+            cov = r.json().get("coverage", {}).get("all_country", {})
+            if cov:
+                pago = cov.get("list_cost", 0)
+                disc = cov.get("discount", {})
+                cheio = disc.get("promoted_amount", 0) if disc else 0
+                if not cheio or cheio == 0:
+                    cheio = pago
+                return {"cheio": cheio, "valor": pago, "_raw": cov}
+        except Exception as e:
+            print("frete faixa erro:", e)
+        return {"cheio": 0, "valor": 0, "_raw": {}}
+
+    fg = get_frete(True)
     fp = get_frete(False)
     return jsonify({
         "preco": preco,
