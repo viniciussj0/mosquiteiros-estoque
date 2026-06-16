@@ -167,12 +167,10 @@ def ml_custos(item_id):
     frete_gratis_cheio   = 0
     frete_gratis_vendedor = 0
     if cov_g:
-        frete_gratis_vendedor = cov_g.get("list_cost", 0)  # o que você paga (com desconto)
-        disc = cov_g.get("discount", {})
-        if disc and disc.get("promoted_amount"):
-            frete_gratis_cheio = disc.get("promoted_amount")
-        else:
-            frete_gratis_cheio = frete_gratis_vendedor
+        disc = cov_g.get("discount", {}) or {}
+        frete_gratis_cheio = disc.get("promoted_amount", 0) or cov_g.get("list_cost", 0)
+        rate_g = disc.get("rate", 0) or 0
+        frete_gratis_vendedor = frete_gratis_cheio * (1 - rate_g) if frete_gratis_cheio else cov_g.get("list_cost", 0)
 
     # Frete não grátis (comprador paga)
     fr_pago = get_frete(False)
@@ -180,12 +178,10 @@ def ml_custos(item_id):
     frete_pago_cheio    = 0
     frete_pago_comprador = 0
     if cov_p:
-        frete_pago_comprador = cov_p.get("list_cost", 0)
-        disc_p = cov_p.get("discount", {})
-        if disc_p and disc_p.get("promoted_amount"):
-            frete_pago_cheio = disc_p.get("promoted_amount")
-        else:
-            frete_pago_cheio = frete_pago_comprador
+        disc_p = cov_p.get("discount", {}) or {}
+        frete_pago_cheio = disc_p.get("promoted_amount", 0) or cov_p.get("list_cost", 0)
+        rate_p = disc_p.get("rate", 0) or 0
+        frete_pago_comprador = frete_pago_cheio * (1 - rate_p) if frete_pago_cheio else cov_p.get("list_cost", 0)
 
     return jsonify({
         "item": {
@@ -295,11 +291,11 @@ def ml_faixa(item_id):
                 params=params, headers={"Authorization": f"Bearer {token}"})
             cov = r.json().get("coverage", {}).get("all_country", {})
             if cov:
-                pago = cov.get("list_cost", 0)
-                disc = cov.get("discount", {})
-                cheio = disc.get("promoted_amount", 0) if disc else 0
-                if not cheio or cheio == 0:
-                    cheio = pago
+                disc = cov.get("discount", {}) or {}
+                cheio = disc.get("promoted_amount", 0) or cov.get("list_cost", 0)
+                rate = disc.get("rate", 0) or 0
+                # Você paga = valor cheio menos o desconto da reputação
+                pago = cheio * (1 - rate) if cheio else cov.get("list_cost", 0)
                 return {"cheio": cheio, "valor": pago, "_raw": cov}
         except Exception as e:
             print("frete faixa erro:", e)
