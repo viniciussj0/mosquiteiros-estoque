@@ -287,14 +287,13 @@ def ml_faixa(item_id):
                 params=params, headers={"Authorization": f"Bearer {token}"})
             cov = r.json().get("coverage", {}).get("all_country", {})
             if cov:
-                cheio = cov.get("list_cost", 0)   # valor cheio do frete
-                pago = cov.get("cost", 0)          # o que o vendedor paga (já com cobertura)
-                # Se cost vier 0 mas tem desconto, calcular pelo discount
-                if pago == 0 and cheio > 0:
-                    disc = cov.get("discount", {})
-                    rate = disc.get("rate", 0) if disc else 0
-                    if rate > 0:
-                        pago = cheio * (1 - rate)
+                # Documentação ML: list_cost = vendedor paga (JÁ com desconto)
+                #                  promoted_amount = valor cheio antes do desconto
+                pago = cov.get("list_cost", 0)
+                disc = cov.get("discount", {})
+                cheio = disc.get("promoted_amount", 0) if disc else 0
+                if not cheio or cheio == 0:
+                    cheio = pago
                 return {"cheio": cheio, "valor": pago}
         except Exception as e:
             print("frete faixa erro:", e)
