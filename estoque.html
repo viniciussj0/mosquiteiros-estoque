@@ -285,7 +285,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div id="desp-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem"></div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Pagamento</th><th style="text-align:right">Valor</th><th style="text-align:center">Ação</th></tr></thead>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Pagamento</th><th style="text-align:right">Valor</th><th style="text-align:center">Pago</th><th style="text-align:center">Ação</th></tr></thead>
           <tbody id="desp-tbody"></tbody>
         </table>
       </div>
@@ -826,7 +826,8 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
 <!-- MODAL DESPESA -->
 <div class="overlay" id="ov-desp">
   <div class="modal" style="width:420px">
-    <h2>💸 Nova Despesa</h2>
+    <h2 id="desp-modal-titulo">💸 Nova Despesa</h2>
+    <input type="hidden" id="desp-edit-id" value="">
     <div class="mrow"><label>Valor (R$)</label><input type="number" id="desp-valor" step="0.01" placeholder="0,00"></div>
     <div class="mrow"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
     <div class="mrow"><label>Data do pagamento</label><input type="date" id="desp-data"></div>
@@ -846,9 +847,13 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
         <option>Aluguel</option><option>Energia</option><option>Internet</option><option>Outros</option>
       </datalist>
     </div>
+    <div class="mrow" style="display:flex;align-items:center;gap:8px;margin-top:-4px">
+      <input type="checkbox" id="desp-pago" style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent2)">
+      <label for="desp-pago" style="margin:0;font-size:13px;font-weight:500;color:var(--text);cursor:pointer">✅ Já foi pago</label>
+    </div>
     <div class="mactions">
       <button class="btn btn-outline" onclick="closeModal('ov-desp')">Cancelar</button>
-      <button class="btn btn-danger" onclick="salvarDesp()" style="background:var(--danger);color:#fff">Registrar</button>
+      <button class="btn btn-danger" id="desp-btn-salvar" onclick="salvarDesp()" style="background:var(--danger);color:#fff">Registrar</button>
     </div>
   </div>
 </div>
@@ -1239,9 +1244,13 @@ async function salvarEdicao() {
 }
 
 function openModalDesp() { 
+  document.getElementById("desp-edit-id").value = "";
+  document.getElementById("desp-modal-titulo").textContent = "💸 Nova Despesa";
+  document.getElementById("desp-btn-salvar").textContent = "Registrar";
   document.getElementById("desp-valor").value="";
   document.getElementById("desp-desc").value="";
   document.getElementById("desp-cat").value="";
+  document.getElementById("desp-pago").checked = false;
   // Data de hoje como padrão
   const hoje = new Date();
   const off = hoje.getTimezoneOffset();
@@ -1253,27 +1262,64 @@ function openModalDesp() {
   openModal("ov-desp"); 
 }
 
+function editarDesp(id) {
+  const d = dados.despesas.find(x => x.id === id);
+  if(!d) return;
+  document.getElementById("desp-edit-id").value = id;
+  document.getElementById("desp-modal-titulo").textContent = "✏️ Editar Despesa";
+  document.getElementById("desp-btn-salvar").textContent = "Salvar Alterações";
+  document.getElementById("desp-valor").value = d.valor || 0;
+  document.getElementById("desp-desc").value = d.descricao || d.desc || "";
+  document.getElementById("desp-cat").value = d.categoria || "";
+  document.getElementById("desp-pago").checked = !!d.pago;
+  const dt = d.data ? new Date(d.data) : new Date();
+  const off = dt.getTimezoneOffset();
+  document.getElementById("desp-data").value = new Date(dt.getTime() - off*60000).toISOString().substring(0,10);
+  document.getElementById("desp-pgto").value = d.pgto || "PIX";
+  document.getElementById("desp-parcelas").value = d.parcelas || 2;
+  document.getElementById("desp-parcelas-row").style.display = (d.pgto === "Cartão Parcelado") ? "block" : "none";
+  openModal("ov-desp");
+}
+
 function onDespPgtoChange() {
   const pgto = document.getElementById("desp-pgto").value;
   document.getElementById("desp-parcelas-row").style.display = (pgto === "Cartão Parcelado") ? "block" : "none";
 }
 
 async function salvarDesp() {
+  const editId = document.getElementById("desp-edit-id").value;
   const valor = parseFloat(document.getElementById("desp-valor").value);
   const desc  = document.getElementById("desp-desc").value.trim();
   const cat   = document.getElementById("desp-cat").value.trim() || "Outros";
   const dataInput = document.getElementById("desp-data").value;
   const pgto  = document.getElementById("desp-pgto").value;
   const parcelas = pgto === "Cartão Parcelado" ? (parseInt(document.getElementById("desp-parcelas").value)||1) : 1;
+  const pago  = document.getElementById("desp-pago").checked;
   if(!valor || !desc) { toast("Preencha valor e descrição!", true); return; }
 
   // Monta a data (usa a escolhida, ou agora se vazia)
   const dataISO = dataInput ? new Date(dataInput + "T12:00:00").toISOString() : new Date().toISOString();
   const mesRef = dataISO.substring(0,7);
 
+  if(editId) {
+    // Modo edição
+    const id = parseInt(editId);
+    const upd = { valor, descricao:desc, categoria:cat, pgto, parcelas, pago, data:dataISO, mes:mesRef };
+    const ok = await sbPatch("despesas", id, upd);
+    if(ok) {
+      const d = dados.despesas.find(x=>x.id===id);
+      if(d) Object.assign(d, upd);
+      renderFinanceiro(); closeModal("ov-desp");
+      toast(`✅ Despesa atualizada: ${R(valor)}`);
+    } else {
+      toast("⚠️ Erro ao atualizar despesa!", true);
+    }
+    return;
+  }
+
   const _dNova = {
     valor, descricao:desc, categoria:cat,
-    pgto, parcelas,
+    pgto, parcelas, pago,
     data:dataISO, mes:mesRef
   };
   const _dSalva = await sbPost("despesas", _dNova);
@@ -1281,6 +1327,19 @@ async function salvarDesp() {
   renderFinanceiro(); closeModal("ov-desp");
   const txtParc = parcelas > 1 ? ` (${parcelas}x)` : "";
   toast(`✅ Despesa registrada: ${R(valor)}${txtParc}`);
+}
+async function togglePagoDesp(id, checked) {
+  const d = dados.despesas.find(x=>x.id===id);
+  if(!d) return;
+  d.pago = checked;
+  const ok = await sbPatch("despesas", id, {pago: checked});
+  if(ok) {
+    renderFinanceiro();
+    toast(checked ? "✅ Marcada como pago" : "↩️ Marcada como pendente");
+  } else {
+    d.pago = !checked;
+    toast("⚠️ Erro ao atualizar status!", true);
+  }
 }
 async function removerDesp(id) {
   await sbDelete("despesas", id);
@@ -1889,15 +1948,20 @@ function renderFinanceiro() {
     ? despesas.map(d=>{
         const pgtoIcone = d.pgto==="PIX"?"💠":d.pgto?"💳":"";
         const pgtoTxt = d.pgto ? `${pgtoIcone} ${d.pgto}${d.parcelas>1?` ${d.parcelas}x`:''}` : '—';
-        return `<tr>
+        const pago = !!d.pago;
+        return `<tr style="${pago?'background:var(--accent2-light)':''}">
         <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
         <td>${d.desc||d.descricao||'-'}</td>
         <td><span class="badge badge-warn">${d.categoria||'Outros'}</span></td>
         <td style="font-size:12px;color:var(--text2)">${pgtoTxt}</td>
         <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(d.valor)}</td>
-        <td style="text-align:center"><button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button></td>
+        <td style="text-align:center"><input type="checkbox" ${pago?'checked':''} onchange="togglePagoDesp(${d.id}, this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent2)" title="${pago?'Pago':'Marcar como pago'}"></td>
+        <td style="text-align:center;white-space:nowrap">
+          <button class="btn btn-outline btn-xs" onclick="editarDesp(${d.id})" title="Editar" style="margin-right:4px">✏️</button>
+          <button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button>
+        </td>
       </tr>`}).join("")
-    : `<tr><td colspan="6" class="empty">Nenhuma despesa</td></tr>`;
+    : `<tr><td colspan="7" class="empty">Nenhuma despesa</td></tr>`;
 }
 
 // ── RENDER ALL ────────────────────────────────────────────────────────────────
