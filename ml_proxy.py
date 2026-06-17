@@ -199,10 +199,7 @@ def ml_custos(item_id):
         "frete_pago": {
             "cheio":     frete_pago_cheio,
             "comprador": frete_pago_comprador
-        },
-        "_raw_gratis": cov_g,
-        "_raw_pago": cov_p
-    })
+        }})
 
 
 # Busca anúncios do vendedor por texto (título ou ID)
@@ -315,10 +312,10 @@ def ml_faixa(item_id):
                 rate = disc.get("rate", 0) or 0
                 # Você paga = valor cheio menos o desconto da reputação
                 pago = cheio * (1 - rate) if cheio else cov.get("list_cost", 0)
-                return {"cheio": cheio, "valor": pago, "_raw": cov}
+                return {"cheio": cheio, "valor": pago}
         except Exception as e:
             print("frete faixa erro:", e)
-        return {"cheio": 0, "valor": 0, "_raw": {}}
+        return {"cheio": 0, "valor": 0}
 
     fg = get_frete(True)
     fp = get_frete(False)
@@ -328,14 +325,6 @@ def ml_faixa(item_id):
         "tarifa_pct": taxa.get("percentage", 0),
         "frete_gratis": fg,
         "frete_pago": fp,
-        "_raw_gratis": fg.get("_raw", {}),
-        "_raw_pago": fp.get("_raw", {}),
-        "_debug": {
-            "dimensions": dimensions,
-            "logistic_type": logistic_type,
-            "shipping_mode": shipping_mode,
-            "condition": condition
-        }
     })
 
 
@@ -411,150 +400,6 @@ def ml_faixa_cat():
         "frete_pago": frete_pago_valor
     })
 
-
-# DEBUG: retorna JSON cru do frete para inspecionar estrutura
-@app.route("/ml/debug_frete/<item_id>", methods=["GET", "OPTIONS"])
-def ml_debug_frete(item_id):
-    if request.method == "OPTIONS":
-        return jsonify({})
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    preco = float(request.args.get("preco", 65.90))
-    lt = request.args.get("listing_type", "gold_pro")
-    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
-                          headers={"Authorization": f"Bearer {token}"})
-    seller_id = r_item.json().get("seller_id")
-    params = {"item_id": item_id, "item_price": preco, "listing_type_id": lt,
-              "verbose": "true", "free_shipping": "true"}
-    r = requests.get(f"https://api.mercadolibre.com/users/{seller_id}/shipping_options/free",
-                     params=params, headers={"Authorization": f"Bearer {token}"})
-    return jsonify(r.json())
-
-
-# Chama o endpoint REAL do simulador de custos do ML (refresh-calculator)
-# Retorna os MESMOS valores que o site mostra (comissão + frete exatos)
-@app.route("/ml/simulador/<item_id>", methods=["GET", "OPTIONS"])
-def ml_simulador(item_id):
-    if request.method == "OPTIONS":
-        return jsonify({})
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    preco = request.args.get("preco", "0")
-    listing_type = request.args.get("listing_type", "gold_special")
-    frete_gratis = request.args.get("frete_gratis", "free")  # "free" ou "not_free"
-
-    # Buscar categoria e domain do item
-    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
-                          headers={"Authorization": f"Bearer {token}"})
-    item_data = r_item.json()
-    category_id = item_data.get("category_id", "")
-    domain_id = item_data.get("domain_id", "")
-
-    # Payload idêntico ao do simulador web do ML
-    payload = {
-        "channels": "marketplace",
-        "category_id": category_id,
-        "domain_id": domain_id,
-        "condition": "new",
-        "currency_id": "BRL",
-        "listing_type_id": listing_type,
-        "listing_types_col1_row2_SUB1": "no-campaign",
-        "selling_price_ML": str(preco),
-        "selling_price_MS": "0",
-        "shipping_channel": "mercado_envios",
-        "shipping_col1_row2": frete_gratis
-    }
-
-    try:
-        r = requests.post(
-            "https://www.mercadolivre.com.br/simulador-de-custos/api/refresh-calculator",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json"
-            }
-        )
-        data = r.json()
-        # Extrair os valores dos "bricks"
-        resultado = extrair_simulador(data)
-        resultado["_status"] = r.status_code
-        return jsonify(resultado)
-    except Exception as e:
-        print("simulador erro:", e)
-        return jsonify({"error": str(e), "_status": "erro"}), 200
-
-
-def extrair_simulador(data):
-    """Percorre os bricks recursivamente e extrai comissão, frete, custos e recebe."""
-    res = {"comissao": None, "comissao_pct": None,
-           "frete_cheio": None, "frete_pago": None,
-           "custos": None, "recebe": None}
-
-    def parse_money(s):
-        if not s: return None
-        s = s.replace("-R$", "").replace("R$", "").replace(".", "").replace(",", ".").strip()
-        try: return float(s)
-        except: return None
-
-    def walk(node):
-        if isinstance(node, list):
-            for n in node: walk(n)
-            return
-        if not isinstance(node, dict): return
-        bid = node.get("id", "")
-        d = node.get("data", {}) or {}
-
-        if bid == "listing_types_col1_row2_SUB2":
-            res["comissao"] = parse_money(d.get("new_price"))
-        if bid == "listing_types_col1_row2_SUB3":
-            txt = d.get("text", "")
-            import re
-            m = re.search(r"([\d,]+)%", txt)
-            if m: res["comissao_pct"] = float(m.group(1).replace(",", "."))
-        if bid == "shipping_col1_row2_discount":
-            res["frete_cheio"] = parse_money(d.get("previous_price"))
-            res["frete_pago"]  = parse_money(d.get("new_price"))
-        if bid == "summary_col0_row1":
-            res["custos"] = parse_money(d.get("text"))
-        if bid == "summary_col0_row3":
-            res["recebe"] = parse_money(d.get("text"))
-
-        if "bricks" in node: walk(node["bricks"])
-
-    walk(data)
-    return res
-
-
-# DEBUG: testa o endpoint do simulador e retorna status + corpo cru
-@app.route("/ml/teste_sim/<item_id>", methods=["GET", "OPTIONS"])
-def ml_teste_sim(item_id):
-    if request.method == "OPTIONS":
-        return jsonify({})
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    preco = request.args.get("preco", "200")
-    r_item = requests.get(f"https://api.mercadolibre.com/items/{item_id}",
-                          headers={"Authorization": f"Bearer {token}"})
-    item_data = r_item.json()
-    payload = {
-        "channels": "marketplace",
-        "category_id": item_data.get("category_id", ""),
-        "domain_id": item_data.get("domain_id", ""),
-        "condition": "new", "currency_id": "BRL",
-        "listing_type_id": "gold_special",
-        "listing_types_col1_row2_SUB1": "no-campaign",
-        "selling_price_ML": str(preco), "selling_price_MS": "0",
-        "shipping_channel": "mercado_envios", "shipping_col1_row2": "free"
-    }
-    r = requests.post(
-        "https://www.mercadolivre.com.br/simulador-de-custos/api/refresh-calculator",
-        json=payload,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-    return jsonify({
-        "status": r.status_code,
-        "payload_enviado": payload,
-        "resposta_inicio": r.text[:500]
-    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
