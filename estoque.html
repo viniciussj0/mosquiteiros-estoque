@@ -223,6 +223,10 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           <input type="date" id="demo-data-ini" onchange="onDemoDataChange()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data inicial">
           <span style="font-size:11px;color:var(--text3)">até</span>
           <input type="date" id="demo-data-fim" onchange="onDemoDataChange()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data final">
+          <div style="display:flex;align-items:center;gap:3px" title="Imposto sobre vendas (opcional, ex: Simples Nacional/MEI)">
+            <span style="font-size:11px;color:var(--text3)">Imp.%</span>
+            <input type="number" id="demo-imposto-pct" value="0" min="0" max="100" step="0.1" onchange="renderFinanceiro()" style="width:48px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none">
+          </div>
           <button onclick="limparFiltroDemo()" title="Limpar filtros" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;cursor:pointer;color:var(--text2)">✕</button>
         </div>
       </div>
@@ -1173,6 +1177,21 @@ function custoTotalProduto(p) {
     val(p.custo_outros,    p.tipo_outros||'rs');
 }
 
+// Retorna o detalhamento de custo por unidade (não só o total)
+function breakdownCustoProduto(p) {
+  if(!p) return {base:0, embalagem:0, ads:0, frete:0, outros:0, total:0};
+  const preco = p.preco || 0;
+  function val(v, tipo) {
+    return tipo === 'pct' ? (preco * (Number(v)||0) / 100) : (Number(v)||0);
+  }
+  const base      = Number(p.custo)||0;
+  const embalagem = val(p.custo_embalagem, p.tipo_embalagem||'rs');
+  const ads       = val(p.custo_ads,       p.tipo_ads||'rs');
+  const frete     = val(p.custo_frete,     p.tipo_frete||'rs');
+  const outros    = val(p.custo_outros,    p.tipo_outros||'rs');
+  return {base, embalagem, ads, frete, outros, total: base+embalagem+ads+frete+outros};
+}
+
 function custoEmReais(campo, preco) {
   const val  = parseFloat(document.getElementById(`edit-custo-${campo}`)?.value)||0;
   const tipo = document.getElementById(`tipo-${campo}`)?.value || 'rs';
@@ -1851,34 +1870,47 @@ function renderFinanceiro() {
     despesasDemo = dados.despesas.filter(d => (d.mes||(d.data?d.data.substring(0,7):"")) === mes);
   }
 
+  const impostoPctDemo = parseFloat(document.getElementById("demo-imposto-pct")?.value) || 0;
+
   const receita    = vendasFinancDemo.reduce((s,v)=>s+(v.total||0),0);
   const despTot    = despesasDemo.reduce((s,d)=>s+(d.valor||0),0);
-  let custoProd    = 0;
-  for(const v of vendasFinancDemo) { 
-    const p=dados.estoque.find(x=>x.id===v.produto_id); 
-    const custo = p ? (p.custo||0) : (v.custo_unitario||0);
-    custoProd += custo * (v.qtd||1); 
-  }
-  const lucro      = receita - despTot - custoProd;
-  const margem     = receita>0?(lucro/receita*100):0;
-  let lucroShopeeTotal = 0;
-  let taxasShopeeTotal = 0;
+
+  // Breakdown completo por venda: custo base, embalagem, ads, frete, outros, comissão, tarifa, imposto
+  let custoProdTotal  = 0; // só custo base (CMV)
+  let embalagemTotal  = 0;
+  let adsTotal         = 0;
+  let freteTotal       = 0;
+  let outrosTotal      = 0;
   let comissaoShopeeTotal = 0;
-  let tarifaShopeeTotal = 0;
+  let tarifaShopeeTotal   = 0;
+  let impostoTotal     = 0;
+
   for(const v of vendasFinancDemo) {
     const p = dados.estoque.find(x=>x.id===v.produto_id);
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
-    const custoUnit = custoTotalProduto(p);
+    const bd = breakdownCustoProduto(p);
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
+    const imposto = preco * (impostoPctDemo/100);
     const q = v.qtd||1;
-    comissaoShopeeTotal += comissao * q;
-    tarifaShopeeTotal   += tarifa * q;
-    taxasShopeeTotal += (comissao + tarifa) * q;
-    lucroShopeeTotal += (preco - comissao - tarifa - custoUnit) * q;
+
+    custoProdTotal       += bd.base * q;
+    embalagemTotal        += bd.embalagem * q;
+    adsTotal               += bd.ads * q;
+    freteTotal              += bd.frete * q;
+    outrosTotal             += bd.outros * q;
+    comissaoShopeeTotal  += comissao * q;
+    tarifaShopeeTotal     += tarifa * q;
+    impostoTotal          += imposto * q;
   }
-  lucroShopeeTotal -= despTot;
-  const margemShopee = receita>0?(lucroShopeeTotal/receita*100):0;
+
+  const custoProd = custoProdTotal; // CMV puro, para o KPI "Custo Produtos"
+  const taxasShopeeTotal = comissaoShopeeTotal + tarifaShopeeTotal;
+  const custosAdicionaisTotal = embalagemTotal + adsTotal + freteTotal + outrosTotal;
+
+  // Lucro líquido real: receita - taxas Shopee - imposto - custo produto - custos adicionais - despesas operacionais
+  const lucro = receita - taxasShopeeTotal - impostoTotal - custoProdTotal - custosAdicionaisTotal - despTot;
+  const margem = receita>0?(lucro/receita*100):0;
 
   const periodoLabel = (demoDataIni || demoDataFim)
     ? `${demoDataIni?demoDataIni.split('-').reverse().join('/'):'início'} - ${demoDataFim?demoDataFim.split('-').reverse().join('/'):'hoje'}`
@@ -1891,14 +1923,22 @@ function renderFinanceiro() {
     <div class="sum-card ${lucro>=0?'ok':'danger'}"><div class="lbl">Lucro Líquido</div><div class="val" style="font-size:16px">${R(lucro)}</div><div class="sub">Margem: ${margem.toFixed(1)}%</div></div>
   `;
 
+  const linhaOpc = (label, valor, cor) => valor > 0.004 ? `
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">${label}</span><strong style="font-family:'JetBrains Mono',monospace;color:${cor}">− ${R(valor)}</strong></div>` : '';
+
   document.getElementById("fin-demo").innerHTML = `
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💰 Receita bruta</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(receita)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷 Custo dos produtos</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(custoProd)}</strong></div>
+    ${linhaOpc('📦 Embalagem', embalagemTotal, 'var(--warn)')}
+    ${linhaOpc('📢 ADS / Marketing (produto)', adsTotal, 'var(--warn)')}
+    ${linhaOpc('🚚 Frete (produto)', freteTotal, 'var(--warn)')}
+    ${linhaOpc('➕ Outros custos (produto)', outrosTotal, 'var(--warn)')}
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💸 Despesas operacionais</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(despTot)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🛍️ Comissão Shopee (20%)</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(comissaoShopeeTotal)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷️ Tarifa fixa Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(tarifaShopeeTotal)}</strong></div>
+    ${linhaOpc('🧾 Imposto (' + impostoPctDemo + '%)', impostoTotal, 'var(--danger)')}
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">↳ Total taxas Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--text3)">− ${R(taxasShopeeTotal)}</strong></div>
-    <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido (Shopee)</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucroShopeeTotal>=0?'var(--accent2)':'var(--danger)'}">${R(lucroShopeeTotal)} <span style="font-size:12px;opacity:.7">(${margemShopee.toFixed(1)}%)</span></strong></div>
+    <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucro>=0?'var(--accent2)':'var(--danger)'}">${R(lucro)} <span style="font-size:12px;opacity:.7">(${margem.toFixed(1)}%)</span></strong></div>
   `;
 
   // Por cor separada
