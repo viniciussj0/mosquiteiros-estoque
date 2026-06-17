@@ -479,13 +479,6 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           <div id="sim-manual-cards"></div>
         </div>
 
-        <!-- TESTE TEMPORÁRIO do simulador real do ML -->
-        <div style="margin-top:14px;padding:12px;background:#fffbe6;border:1px dashed #d4a017;border-radius:var(--radius-sm)">
-          <button onclick="testarSimuladorReal()" class="btn btn-sm" style="background:#d4a017;color:#fff">🧪 Testar Simulador Real do ML</button>
-          <span style="font-size:11px;color:var(--text3);margin-left:8px">Digite o nome do produto acima primeiro, depois clique aqui</span>
-          <pre id="teste-sim-out" style="margin-top:10px;font-size:11px;background:#1a1a1a;color:#0f0;padding:10px;border-radius:6px;overflow:auto;max-height:300px;display:none;white-space:pre-wrap"></pre>
-        </div>
-
       </div>
     </div>
 
@@ -2488,7 +2481,6 @@ async function calcularFaixasML(faixas, custo, impostoPct, adsPct, itemId) {
           headers: {'Authorization': 'Bearer ' + mlToken}
         });
         const d = await resp.json();
-        if(idx === 0) console.log('🔍 DEBUG FAIXA', tipo, '| dims:', JSON.stringify(d._debug), '| cheio:', d.frete_gratis?.cheio, '| vc paga:', d.frete_gratis?.valor);
         tarifa = d.tarifa || 0;
         tarifaPct = d.tarifa_pct || 0;
         freteGratis = d.frete_gratis?.valor || 0;  // você paga (frete grátis)
@@ -2527,39 +2519,6 @@ async function calcularFaixasML(faixas, custo, impostoPct, adsPct, itemId) {
     tbody.innerHTML = rows.join('') + (idx < faixas.length-1 ? `<tr><td colspan="11" style="text-align:center;padding:8px;color:var(--text3);font-size:11px">🔄 Carregando faixa ${idx+2}/${faixas.length}...</td></tr>` : '');
   }
   tbody.innerHTML = rows.join('');
-}
-
-async function testarSimuladorReal() {
-  const out = document.getElementById('teste-sim-out');
-  out.style.display = 'block';
-  out.textContent = '🔄 Testando...';
-
-  if(!mlToken) { out.textContent = '❌ Conecte ao ML primeiro!'; return; }
-
-  const nomeProd = (document.getElementById('sim-nome')?.value || '').trim();
-  if(nomeProd.length < 3) { out.textContent = '❌ Digite o nome do produto no campo acima primeiro!'; return; }
-
-  try {
-    // Buscar o anúncio pelo nome
-    const rb = await fetch(`${ML_PROXY}/ml/buscar/${mlUserId}?q=${encodeURIComponent(nomeProd)}`, {
-      headers: {'Authorization': 'Bearer ' + mlToken}
-    });
-    const items = (await rb.json()).items || [];
-    if(items.length === 0) { out.textContent = '❌ Nenhum anúncio encontrado com "' + nomeProd + '"'; return; }
-    const itemId = items[0].id;
-    const preco = parseFloat(document.getElementById('sim-preco-manual')?.value) || 200;
-
-    out.textContent = `📦 Produto: ${items[0].title}\n🆔 ${itemId}\n💰 Preço teste: R$ ${preco}\n\n🔄 Chamando simulador real do ML...`;
-
-    // Chamar a rota de teste
-    const r = await fetch(`${ML_PROXY}/ml/teste_sim/${itemId}?preco=${preco}`, {
-      headers: {'Authorization': 'Bearer ' + mlToken}
-    });
-    const d = await r.json();
-    out.textContent = `📦 ${items[0].title}\n🆔 ${itemId} | 💰 R$ ${preco}\n\n` + JSON.stringify(d, null, 2);
-  } catch(e) {
-    out.textContent = '❌ Erro: ' + e.message;
-  }
 }
 
 function limparSimulador() {
