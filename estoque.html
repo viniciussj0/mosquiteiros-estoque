@@ -214,7 +214,18 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
     <!-- Demonstrativo -->
     <div class="twrap">
-      <div style="background:var(--surface2);padding:11px 16px;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;border-bottom:1px solid var(--border)">Demonstrativo do Mês</div>
+      <div style="background:var(--surface2);padding:11px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Demonstrativo</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <select id="demo-mes" onchange="onDemoMesChange()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none">
+            <option value="">Mês atual</option>
+          </select>
+          <input type="date" id="demo-data-ini" onchange="onDemoDataChange()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data inicial">
+          <span style="font-size:11px;color:var(--text3)">até</span>
+          <input type="date" id="demo-data-fim" onchange="onDemoDataChange()" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;color:var(--text);outline:none" title="Data final">
+          <button onclick="limparFiltroDemo()" title="Limpar filtros" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:11px;background:#fff;cursor:pointer;color:var(--text2)">✕</button>
+        </div>
+      </div>
       <div style="padding:1rem" id="fin-demo"></div>
     </div>
     <!-- Produtos mais vendidos -->
@@ -274,7 +285,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <div id="desp-cats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:1rem"></div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th style="text-align:center">Ação</th></tr></thead>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Pagamento</th><th style="text-align:right">Valor</th><th style="text-align:center">Ação</th></tr></thead>
           <tbody id="desp-tbody"></tbody>
         </table>
       </div>
@@ -818,11 +829,22 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
     <h2>💸 Nova Despesa</h2>
     <div class="mrow"><label>Valor (R$)</label><input type="number" id="desp-valor" step="0.01" placeholder="0,00"></div>
     <div class="mrow"><label>Descrição</label><input type="text" id="desp-desc" placeholder="Ex: ADS Facebook"></div>
-    <div class="mrow"><label>Categoria</label>
-      <select id="desp-cat">
-        <option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option>
-        <option>Frete</option><option>Mão de obra</option><option>Outros</option>
+    <div class="mrow"><label>Data do pagamento</label><input type="date" id="desp-data"></div>
+    <div class="mrow"><label>Forma de pagamento</label>
+      <select id="desp-pgto" onchange="onDespPgtoChange()">
+        <option value="PIX">💠 PIX</option>
+        <option value="Cartão">💳 Cartão</option>
+        <option value="Cartão Parcelado">💳 Cartão Parcelado</option>
       </select>
+    </div>
+    <div class="mrow" id="desp-parcelas-row" style="display:none"><label>Número de parcelas</label><input type="number" id="desp-parcelas" min="2" max="24" step="1" placeholder="Ex: 3" value="2"></div>
+    <div class="mrow"><label>Categoria</label>
+      <input type="text" id="desp-cat" list="desp-cat-list" placeholder="Digite ou escolha (ex: Marketing)" autocomplete="off">
+      <datalist id="desp-cat-list">
+        <option>Marketing</option><option>Matéria-prima</option><option>Embalagem</option>
+        <option>Frete</option><option>Mão de obra</option><option>Impostos</option>
+        <option>Aluguel</option><option>Energia</option><option>Internet</option><option>Outros</option>
+      </datalist>
     </div>
     <div class="mactions">
       <button class="btn btn-outline" onclick="closeModal('ov-desp')">Cancelar</button>
@@ -1219,18 +1241,46 @@ async function salvarEdicao() {
 function openModalDesp() { 
   document.getElementById("desp-valor").value="";
   document.getElementById("desp-desc").value="";
+  document.getElementById("desp-cat").value="";
+  // Data de hoje como padrão
+  const hoje = new Date();
+  const off = hoje.getTimezoneOffset();
+  const hojeLocal = new Date(hoje.getTime() - off*60000).toISOString().substring(0,10);
+  document.getElementById("desp-data").value = hojeLocal;
+  document.getElementById("desp-pgto").value = "PIX";
+  document.getElementById("desp-parcelas").value = "2";
+  document.getElementById("desp-parcelas-row").style.display = "none";
   openModal("ov-desp"); 
 }
+
+function onDespPgtoChange() {
+  const pgto = document.getElementById("desp-pgto").value;
+  document.getElementById("desp-parcelas-row").style.display = (pgto === "Cartão Parcelado") ? "block" : "none";
+}
+
 async function salvarDesp() {
   const valor = parseFloat(document.getElementById("desp-valor").value);
   const desc  = document.getElementById("desp-desc").value.trim();
-  const cat   = document.getElementById("desp-cat").value;
-  if(!valor || !desc) { toast("Preencha todos os campos!", true); return; }
-  const _dNova = {valor, descricao:desc, categoria:cat, data:new Date().toISOString(), mes:mesAtual()};
+  const cat   = document.getElementById("desp-cat").value.trim() || "Outros";
+  const dataInput = document.getElementById("desp-data").value;
+  const pgto  = document.getElementById("desp-pgto").value;
+  const parcelas = pgto === "Cartão Parcelado" ? (parseInt(document.getElementById("desp-parcelas").value)||1) : 1;
+  if(!valor || !desc) { toast("Preencha valor e descrição!", true); return; }
+
+  // Monta a data (usa a escolhida, ou agora se vazia)
+  const dataISO = dataInput ? new Date(dataInput + "T12:00:00").toISOString() : new Date().toISOString();
+  const mesRef = dataISO.substring(0,7);
+
+  const _dNova = {
+    valor, descricao:desc, categoria:cat,
+    pgto, parcelas,
+    data:dataISO, mes:mesRef
+  };
   const _dSalva = await sbPost("despesas", _dNova);
   if(_dSalva) { const d = Array.isArray(_dSalva)?_dSalva[0]:_dSalva; dados.despesas.unshift(d); }
   renderFinanceiro(); closeModal("ov-desp");
-  toast("✅ Despesa registrada!");
+  const txtParc = parcelas > 1 ? ` (${parcelas}x)` : "";
+  toast(`✅ Despesa registrada: ${R(valor)}${txtParc}`);
 }
 async function removerDesp(id) {
   await sbDelete("despesas", id);
@@ -1601,8 +1651,47 @@ function limparFiltroVendas() {
   renderFinanceiro();
 }
 
+function popularMesesDemo() {
+  const sel = document.getElementById("demo-mes");
+  if(!sel) return;
+  const atual = sel.value;
+  const meses = new Set();
+  dados.vendas.forEach(v => { const m = v.mes || (v.data?v.data.substring(0,7):""); if(m) meses.add(m); });
+  const nomes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  sel.innerHTML = '<option value="">Mês atual</option>' +
+    [...meses].sort().reverse().map(m => {
+      const [a,mm] = m.split("-");
+      return `<option value="${m}" ${m===atual?"selected":""}>${nomes[parseInt(mm)-1]}/${a}</option>`;
+    }).join("");
+}
+
+function onDemoMesChange() {
+  // Ao escolher mês, limpa as datas personalizadas
+  document.getElementById("demo-data-ini").value = "";
+  document.getElementById("demo-data-fim").value = "";
+  renderFinanceiro();
+}
+
+function onDemoDataChange() {
+  // Ao usar datas, limpa o seletor de mês
+  document.getElementById("demo-mes").value = "";
+  renderFinanceiro();
+}
+
+function limparFiltroDemo() {
+  document.getElementById("demo-mes").value = "";
+  document.getElementById("demo-data-ini").value = "";
+  document.getElementById("demo-data-fim").value = "";
+  renderFinanceiro();
+}
+
 function renderFinanceiro() {
   const mes = mesAtual();
+  popularMesesDemo();
+  // Filtros do Demonstrativo (mês/ano ou data personalizada)
+  const demoMes     = document.getElementById("demo-mes")?.value || "";
+  const demoDataIni = document.getElementById("demo-data-ini")?.value || "";
+  const demoDataFim = document.getElementById("demo-data-fim")?.value || "";
   // Filtro de datas do card de vendas
   const vendDataIni = document.getElementById("vend-data-ini")?.value || "";
   const vendDataFim = document.getElementById("vend-data-fim")?.value || "";
@@ -1617,6 +1706,22 @@ function renderFinanceiro() {
     });
   } else {
     vendas = dados.vendas.filter(v=>v.mes===mes);
+  }
+
+  // vendasDemo: vendas filtradas conforme o Demonstrativo (independente do card de vendas)
+  let vendasDemo;
+  if(demoDataIni || demoDataFim) {
+    vendasDemo = dados.vendas.filter(v => {
+      if(!v.data) return false;
+      const d = new Date(v.data);
+      if(demoDataIni && d < new Date(demoDataIni + "T00:00:00")) return false;
+      if(demoDataFim && d > new Date(demoDataFim + "T23:59:59")) return false;
+      return true;
+    });
+  } else if(demoMes) {
+    vendasDemo = dados.vendas.filter(v => (v.mes || (v.data?v.data.substring(0,7):"")) === demoMes);
+  } else {
+    vendasDemo = dados.vendas.filter(v=>v.mes===mes);
   }
   const filtro   = document.getElementById("desp-filtro")?.value || "mes";
   let despesas;
@@ -1660,7 +1765,7 @@ function renderFinanceiro() {
     despesas = despesas.filter(d => d.data && new Date(d.data) <= fim);
   }
 
-  const vendasFinanc = vendas.filter(v => {
+  const filtraEstornadas = (lista) => lista.filter(v => {
     const hCorr = dados.historico.find(h =>
       h.tipo === "venda" &&
       h.produto_nome === v.produto_nome &&
@@ -1668,10 +1773,29 @@ function renderFinanceiro() {
     );
     return !hCorr || !hCorr.estornado;
   });
-  const receita    = vendasFinanc.reduce((s,v)=>s+(v.total||0),0);
-  const despTot    = despesas.reduce((s,d)=>s+(d.valor||0),0);
+  const vendasFinanc     = filtraEstornadas(vendas);      // tabela "Vendas por Produto"
+  const vendasFinancDemo = filtraEstornadas(vendasDemo);  // demonstrativo + KPIs
+
+  // Despesas do período do demonstrativo
+  let despesasDemo;
+  if(demoDataIni || demoDataFim) {
+    despesasDemo = dados.despesas.filter(d => {
+      if(!d.data) return false;
+      const dt = new Date(d.data);
+      if(demoDataIni && dt < new Date(demoDataIni + "T00:00:00")) return false;
+      if(demoDataFim && dt > new Date(demoDataFim + "T23:59:59")) return false;
+      return true;
+    });
+  } else if(demoMes) {
+    despesasDemo = dados.despesas.filter(d => (d.mes||(d.data?d.data.substring(0,7):"")) === demoMes);
+  } else {
+    despesasDemo = dados.despesas.filter(d => (d.mes||(d.data?d.data.substring(0,7):"")) === mes);
+  }
+
+  const receita    = vendasFinancDemo.reduce((s,v)=>s+(v.total||0),0);
+  const despTot    = despesasDemo.reduce((s,d)=>s+(d.valor||0),0);
   let custoProd    = 0;
-  for(const v of vendasFinanc) { 
+  for(const v of vendasFinancDemo) { 
     const p=dados.estoque.find(x=>x.id===v.produto_id); 
     const custo = p ? (p.custo||0) : (v.custo_unitario||0);
     custoProd += custo * (v.qtd||1); 
@@ -1680,20 +1804,29 @@ function renderFinanceiro() {
   const margem     = receita>0?(lucro/receita*100):0;
   let lucroShopeeTotal = 0;
   let taxasShopeeTotal = 0;
-  for(const v of vendasFinanc) {
+  let comissaoShopeeTotal = 0;
+  let tarifaShopeeTotal = 0;
+  for(const v of vendasFinancDemo) {
     const p = dados.estoque.find(x=>x.id===v.produto_id);
     const preco = (p ? p.preco : 0) || v.preco_unitario || 0;
     const custoUnit = custoTotalProduto(p);
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
-    taxasShopeeTotal += (comissao + tarifa) * (v.qtd||1);
-    lucroShopeeTotal += (preco - comissao - tarifa - custoUnit) * (v.qtd||1);
+    const q = v.qtd||1;
+    comissaoShopeeTotal += comissao * q;
+    tarifaShopeeTotal   += tarifa * q;
+    taxasShopeeTotal += (comissao + tarifa) * q;
+    lucroShopeeTotal += (preco - comissao - tarifa - custoUnit) * q;
   }
   lucroShopeeTotal -= despTot;
   const margemShopee = receita>0?(lucroShopeeTotal/receita*100):0;
 
+  const periodoLabel = (demoDataIni || demoDataFim)
+    ? `${demoDataIni?demoDataIni.split('-').reverse().join('/'):'início'} - ${demoDataFim?demoDataFim.split('-').reverse().join('/'):'hoje'}`
+    : (demoMes ? (()=>{ const [a,mm]=demoMes.split('-'); return ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][parseInt(mm)-1]+'/'+a; })() : 'mês atual');
+
   document.getElementById("fin-kpis").innerHTML = `
-    <div class="sum-card ok"><div class="lbl">Receita</div><div class="val" style="font-size:16px">${R(receita)}</div><div class="sub">mês atual</div></div>
+    <div class="sum-card ok"><div class="lbl">Receita</div><div class="val" style="font-size:16px">${R(receita)}</div><div class="sub">${periodoLabel}</div></div>
     <div class="sum-card danger"><div class="lbl">Despesas</div><div class="val" style="font-size:16px">${R(despTot)}</div><div class="sub">operacionais</div></div>
     <div class="sum-card"><div class="lbl">Custo Produtos</div><div class="val" style="font-size:16px">${R(custoProd)}</div><div class="sub">CMV</div></div>
     <div class="sum-card ${lucro>=0?'ok':'danger'}"><div class="lbl">Lucro Líquido</div><div class="val" style="font-size:16px">${R(lucro)}</div><div class="sub">Margem: ${margem.toFixed(1)}%</div></div>
@@ -1703,7 +1836,9 @@ function renderFinanceiro() {
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💰 Receita bruta</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--accent2)">${R(receita)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷 Custo dos produtos</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--warn)">− ${R(custoProd)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💸 Despesas operacionais</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(despTot)}</strong></div>
-    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🛍️ Taxas Shopee (20%+tarifa)</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(taxasShopeeTotal)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🛍️ Comissão Shopee (20%)</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(comissaoShopeeTotal)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷️ Tarifa fixa Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(tarifaShopeeTotal)}</strong></div>
+    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">↳ Total taxas Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--text3)">− ${R(taxasShopeeTotal)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido (Shopee)</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucroShopeeTotal>=0?'var(--accent2)':'var(--danger)'}">${R(lucroShopeeTotal)} <span style="font-size:12px;opacity:.7">(${margemShopee.toFixed(1)}%)</span></strong></div>
   `;
 
@@ -1751,14 +1886,18 @@ function renderFinanceiro() {
     </div>`).join("");
 
   document.getElementById("desp-tbody").innerHTML = despesas.length
-    ? despesas.map(d=>`<tr>
+    ? despesas.map(d=>{
+        const pgtoIcone = d.pgto==="PIX"?"💠":d.pgto?"💳":"";
+        const pgtoTxt = d.pgto ? `${pgtoIcone} ${d.pgto}${d.parcelas>1?` ${d.parcelas}x`:''}` : '—';
+        return `<tr>
         <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${new Date(d.data).toLocaleDateString("pt-BR")}</td>
         <td>${d.desc||d.descricao||'-'}</td>
         <td><span class="badge badge-warn">${d.categoria||'Outros'}</span></td>
+        <td style="font-size:12px;color:var(--text2)">${pgtoTxt}</td>
         <td style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--danger)">${R(d.valor)}</td>
         <td style="text-align:center"><button class="btn btn-danger btn-xs" onclick="removerDesp(${d.id})">×</button></td>
-      </tr>`).join("")
-    : `<tr><td colspan="5" class="empty">Nenhuma despesa</td></tr>`;
+      </tr>`}).join("")
+    : `<tr><td colspan="6" class="empty">Nenhuma despesa</td></tr>`;
 }
 
 // ── RENDER ALL ────────────────────────────────────────────────────────────────
