@@ -667,6 +667,17 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
           </div>
         </div>
       </div>
+      <div class="two">
+        <div class="mrow">
+          <label>🧾 Imposto</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="edit-custo-imposto" step="0.01" value="0" min="0" oninput="calcEditMargem()" style="flex:1">
+            <select id="tipo-imposto" disabled style="width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface2);color:var(--text3)">
+              <option value="pct" selected>%</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="edit-margem-prev" style="font-size:12px;color:var(--text3);margin-top:-8px;margin-bottom:12px"></div>
     <!-- CALCULADORA SHOPEE -->
@@ -957,6 +968,7 @@ async function salvarProduto(p) {
     custo_ads: p.custo_ads || 0,
     custo_frete: p.custo_frete || 0,
     custo_outros: p.custo_outros || 0,
+    custo_imposto: p.custo_imposto || 0,
     tipo_embalagem: p.tipo_embalagem || "rs",
     tipo_ads: p.tipo_ads || "rs",
     tipo_frete: p.tipo_frete || "rs",
@@ -1113,6 +1125,7 @@ function openEdit(id) {
   document.getElementById("edit-custo-ads").value = p.custo_ads || 0;
   document.getElementById("edit-custo-frete").value = p.custo_frete || 0;
   document.getElementById("edit-custo-outros").value = p.custo_outros || 0;
+  document.getElementById("edit-custo-imposto").value = p.custo_imposto || 0;
   document.getElementById("tipo-embalagem").value = p.tipo_embalagem || "rs";
   document.getElementById("tipo-ads").value = p.tipo_ads || "rs";
   document.getElementById("tipo-frete").value = p.tipo_frete || "rs";
@@ -1170,16 +1183,18 @@ function custoTotalProduto(p) {
   function val(v, tipo) {
     return tipo === 'pct' ? (preco * (Number(v)||0) / 100) : (Number(v)||0);
   }
+  const impostoVal = preco * ((Number(p.custo_imposto)||0) / 100);
   return (Number(p.custo)||0) +
     val(p.custo_embalagem, p.tipo_embalagem||'rs') +
     val(p.custo_ads,       p.tipo_ads||'rs') +
     val(p.custo_frete,     p.tipo_frete||'rs') +
-    val(p.custo_outros,    p.tipo_outros||'rs');
+    val(p.custo_outros,    p.tipo_outros||'rs') +
+    impostoVal;
 }
 
 // Retorna o detalhamento de custo por unidade (não só o total)
 function breakdownCustoProduto(p) {
-  if(!p) return {base:0, embalagem:0, ads:0, frete:0, outros:0, total:0};
+  if(!p) return {base:0, embalagem:0, ads:0, frete:0, outros:0, imposto:0, total:0};
   const preco = p.preco || 0;
   function val(v, tipo) {
     return tipo === 'pct' ? (preco * (Number(v)||0) / 100) : (Number(v)||0);
@@ -1189,7 +1204,8 @@ function breakdownCustoProduto(p) {
   const ads       = val(p.custo_ads,       p.tipo_ads||'rs');
   const frete     = val(p.custo_frete,     p.tipo_frete||'rs');
   const outros    = val(p.custo_outros,    p.tipo_outros||'rs');
-  return {base, embalagem, ads, frete, outros, total: base+embalagem+ads+frete+outros};
+  const imposto   = preco * ((Number(p.custo_imposto)||0) / 100);
+  return {base, embalagem, ads, frete, outros, imposto, total: base+embalagem+ads+frete+outros+imposto};
 }
 
 function custoEmReais(campo, preco) {
@@ -1213,7 +1229,9 @@ function calcEditMargem() {
   const ads      = custoEmReais('ads', v);
   const frete    = custoEmReais('frete', v);
   const outros   = custoEmReais('outros', v);
-  const custoTotal = c + embal + ads + frete + outros;
+  const impostoPct = parseFloat(document.getElementById("edit-custo-imposto")?.value)||0;
+  const imposto  = v * (impostoPct/100);
+  const custoTotal = c + embal + ads + frete + outros + imposto;
   const el = document.getElementById("edit-margem-prev");
   if(v > 0) {
     const m = ((v - custoTotal) / v * 100);
@@ -1250,6 +1268,7 @@ async function salvarEdicao() {
   p.custo_ads       = parseFloat(document.getElementById("edit-custo-ads").value)||0;
   p.custo_frete     = parseFloat(document.getElementById("edit-custo-frete").value)||0;
   p.custo_outros    = parseFloat(document.getElementById("edit-custo-outros").value)||0;
+  p.custo_imposto   = parseFloat(document.getElementById("edit-custo-imposto").value)||0;
   p.tipo_embalagem  = document.getElementById("tipo-embalagem")?.value || "rs";
   p.tipo_ads        = document.getElementById("tipo-ads")?.value || "rs";
   p.tipo_frete      = document.getElementById("tipo-frete")?.value || "rs";
@@ -1883,7 +1902,8 @@ function renderFinanceiro() {
   let outrosTotal      = 0;
   let comissaoShopeeTotal = 0;
   let tarifaShopeeTotal   = 0;
-  let impostoTotal     = 0;
+  let impostoProdutoTotal = 0; // imposto cadastrado no produto
+  let impostoManualTotal  = 0; // imposto extra digitado no filtro do Demonstrativo
 
   for(const v of vendasFinancDemo) {
     const p = dados.estoque.find(x=>x.id===v.produto_id);
@@ -1891,7 +1911,7 @@ function renderFinanceiro() {
     const bd = breakdownCustoProduto(p);
     const comissao = preco * 0.20;
     const tarifa = preco<=79.99?4:preco<=99.99?16:preco<=199.99?20:26;
-    const imposto = preco * (impostoPctDemo/100);
+    const impostoManual = preco * (impostoPctDemo/100);
     const q = v.qtd||1;
 
     custoProdTotal       += bd.base * q;
@@ -1901,9 +1921,11 @@ function renderFinanceiro() {
     outrosTotal             += bd.outros * q;
     comissaoShopeeTotal  += comissao * q;
     tarifaShopeeTotal     += tarifa * q;
-    impostoTotal          += imposto * q;
+    impostoProdutoTotal  += bd.imposto * q;
+    impostoManualTotal   += impostoManual * q;
   }
 
+  const impostoTotal = impostoProdutoTotal + impostoManualTotal;
   const custoProd = custoProdTotal; // CMV puro, para o KPI "Custo Produtos"
   const taxasShopeeTotal = comissaoShopeeTotal + tarifaShopeeTotal;
   const custosAdicionaisTotal = embalagemTotal + adsTotal + freteTotal + outrosTotal;
@@ -1936,7 +1958,7 @@ function renderFinanceiro() {
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">💸 Despesas operacionais</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(despTot)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🛍️ Comissão Shopee (20%)</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(comissaoShopeeTotal)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">🏷️ Tarifa fixa Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--danger)">− ${R(tarifaShopeeTotal)}</strong></div>
-    ${linhaOpc('🧾 Imposto (' + impostoPctDemo + '%)', impostoTotal, 'var(--danger)')}
+    ${linhaOpc('🧾 Imposto', impostoTotal, 'var(--danger)')}
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text3)">↳ Total taxas Shopee</span><strong style="font-family:'JetBrains Mono',monospace;color:var(--text3)">− ${R(taxasShopeeTotal)}</strong></div>
     <div style="display:flex;justify-content:space-between;padding:12px 0;background:var(--accent-light);margin:0 -1rem;padding:12px 1rem;margin-top:8px;border-radius:var(--radius-sm)"><span style="font-weight:600">✅ Lucro Líquido</span><strong style="font-family:'JetBrains Mono',monospace;font-size:16px;color:${lucro>=0?'var(--accent2)':'var(--danger)'}">${R(lucro)} <span style="font-size:12px;opacity:.7">(${margem.toFixed(1)}%)</span></strong></div>
   `;
