@@ -173,6 +173,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle}
       <input type="date" id="hist-data-fim" style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);color:var(--text);outline:none" title="Data final">
       <button class="btn btn-primary btn-sm" onclick="renderHistorico()">🔍 Buscar</button>
       <button class="btn btn-outline btn-sm" onclick="limparFiltrosHist()">✕ Limpar</button>
+      <button class="btn btn-sm" onclick="diagnosticarVendas()" style="background:#d4a017;color:#fff" title="Verifica se há vendas estornadas ainda contando no financeiro">🩺 Diagnóstico</button>
       <span id="hist-count" style="font-size:12px;color:var(--text3)"></span>
     </div>
   </div>
@@ -1065,7 +1066,8 @@ async function confirmarVenda() {
   const _vV = {produto_id:p.id, produto_nome:p.nome, qtd, preco_unitario:p.preco, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
   const _hV = {tipo:"venda", produto_id:p.id, produto_nome:p.nome, qtd, total, pgto, data:new Date().toISOString(), mes:mesAtual()};
   dados.vendas.push(_vV); dados.historico.unshift(_hV);
-  await Promise.all([sbPost("vendas", _vV), sbPost("historico", _hV), salvarProduto(p)]);
+  const [vRes] = await Promise.all([sbPost("vendas", _vV), sbPost("historico", _hV), salvarProduto(p)]);
+  if(vRes && vRes[0] && vRes[0].id) _vV.id = vRes[0].id;
   renderAll(); closeModal("ov-venda");
   toast(`✅ Venda: ${qtd}x ${p.nome} — ${R(total)}`);
 }
@@ -1311,13 +1313,16 @@ async function altQty(id, delta) {
     reg.preco_unitario = p.preco;
     reg.total = p.preco * Math.abs(delta);
     reg.pgto = "Não informado";
-    dados.vendas.push({
+    const _vVR = {
       produto_id:p.id, produto_nome:p.nome,
       qtd:Math.abs(delta), preco_unitario:p.preco,
       total:p.preco*Math.abs(delta),
       pgto:"Não informado",
-      data:new Date().toISOString(), mes:mesAtual()
-    });
+      data:reg.data, mes:mesAtual()
+    };
+    dados.vendas.push(_vVR);
+    const vr = await sbPost("vendas", _vVR);
+    if(vr && vr[0] && vr[0].id) _vVR.id = vr[0].id;
   }
   dados.historico.unshift(reg);
   await Promise.all([sbPost("historico", reg), salvarProduto(p)]);
@@ -1360,6 +1365,59 @@ function limparFiltrosHist() {
 }
 
 let estornoAtual = null;
+
+async function diagnosticarVendas() {
+  // Detecta vendas estornadas que ainda estão contando no financeiro
+  // (problema antigo: estorno não removia da tabela vendas)
+  const estornos = dados.historico.filter(h => h.tipo === "estorno");
+  const vendasEstornadas = dados.historico.filter(h => h.tipo === "venda" && h.estornado === true);
+
+  // Para cada venda marcada como estornada no histórico, ver se a venda ainda está em dados.vendas
+  const fantasmas = [];
+  vendasEstornadas.forEach(h => {
+    const v = dados.vendas.find(v =>
+      v.produto_id === h.produto_id &&
+      (v.data === h.data || (v.qtd === h.qtd && (v.mes||"") === (h.mes||"")))
+    );
+    if(v) fantasmas.push({venda: v, hist: h});
+  });
+
+  const totalVendas = dados.vendas.length;
+  const totalReceita = dados.vendas.reduce((s,v)=>s+(v.total||0), 0);
+
+  let msg = `📊 DIAGNÓSTICO DE VENDAS\n\n`;
+  msg += `• Total de vendas no financeiro: ${totalVendas}\n`;
+  msg += `• Receita total somada: ${R(totalReceita)}\n`;
+  msg += `• Estornos registrados: ${estornos.length}\n`;
+  msg += `• Vendas marcadas como estornadas: ${vendasEstornadas.length}\n\n`;
+
+  if(fantasmas.length === 0) {
+    msg += `✅ Nenhuma venda-fantasma encontrada. O financeiro está correto!`;
+    alert(msg);
+    return;
+  }
+
+  const totalFantasma = fantasmas.reduce((s,f)=>s+(f.venda.total||0), 0);
+  msg += `⚠️ ENCONTRADAS ${fantasmas.length} vendas estornadas que AINDA estão contando no financeiro:\n\n`;
+  fantasmas.forEach(f => {
+    msg += `  • ${f.venda.produto_nome} — ${f.venda.qtd}x — ${R(f.venda.total)}\n`;
+  });
+  msg += `\nTotal indevido somado: ${R(totalFantasma)}\n\n`;
+  msg += `Deseja CORRIGIR agora? (remove essas vendas do financeiro)`;
+
+  if(confirm(msg)) {
+    let removidas = 0;
+    for(const f of fantasmas) {
+      dados.vendas = dados.vendas.filter(v => v !== f.venda);
+      if(f.venda.id) {
+        try { await _sb.from("vendas").delete().eq("id", f.venda.id); } catch(e) { console.error(e); }
+      }
+      removidas++;
+    }
+    renderAll();
+    toast(`✅ ${removidas} vendas-fantasma removidas do financeiro!`);
+  }
+}
 
 function renderHistorico() {
   popularMesesHist();
@@ -1490,6 +1548,37 @@ async function confirmarEstorno() {
     await _sb.from("historico").update({estornado: true, qtd_estornada: qtd}).eq("id", estornoAtual.id);
     const hLocal = dados.historico.find(x=>x.id==estornoAtual.id);
     if(hLocal) { hLocal.estornado = true; hLocal.qtd_estornada = qtd; }
+  }
+  // Se for estorno de VENDA, abater a venda correspondente do financeiro
+  if(isVenda) {
+    // Vincula pela venda de mesmo produto + timestamp (criados juntos)
+    const vIdx = dados.vendas.findIndex(v =>
+      v.produto_id === estornoAtual.produto_id &&
+      v.data === estornoAtual.data
+    );
+    let vendaAlvo = vIdx >= 0 ? dados.vendas[vIdx] : null;
+    // Fallback: mesma produto+qtd+mes se não achar pelo timestamp
+    if(!vendaAlvo) {
+      const vIdx2 = dados.vendas.findIndex(v =>
+        v.produto_id === estornoAtual.produto_id &&
+        v.qtd === estornoAtual.qtd &&
+        (v.mes === estornoAtual.mes || (v.data||"").substring(0,7) === (estornoAtual.data||"").substring(0,7))
+      );
+      if(vIdx2 >= 0) vendaAlvo = dados.vendas[vIdx2];
+    }
+    if(vendaAlvo) {
+      const precoUnit = vendaAlvo.preco_unitario || (vendaAlvo.total / (vendaAlvo.qtd||1));
+      if(qtd >= (vendaAlvo.qtd||0)) {
+        // Estorno total: remove a venda inteira
+        dados.vendas = dados.vendas.filter(v => v !== vendaAlvo);
+        if(vendaAlvo.id) await _sb.from("vendas").delete().eq("id", vendaAlvo.id);
+      } else {
+        // Estorno parcial: abate a quantidade e recalcula o total
+        vendaAlvo.qtd  = (vendaAlvo.qtd||0) - qtd;
+        vendaAlvo.total = precoUnit * vendaAlvo.qtd;
+        if(vendaAlvo.id) await _sb.from("vendas").update({qtd: vendaAlvo.qtd, total: vendaAlvo.total}).eq("id", vendaAlvo.id);
+      }
+    }
   }
   const histEstorno = {
     tipo:"estorno", produto_id:estornoAtual.produto_id,
